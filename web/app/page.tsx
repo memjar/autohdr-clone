@@ -8,24 +8,50 @@ export default function Home() {
   const [result, setResult] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
 
+  // All supported file extensions for photographers/realtors
+  const SUPPORTED_EXTENSIONS = [
+    // Standard images
+    '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
+    // High quality
+    '.tiff', '.tif', '.heic', '.heif',
+    // RAW formats (all major camera brands)
+    '.raw', '.cr2', '.cr3', '.crw',           // Canon
+    '.nef', '.nrw',                            // Nikon
+    '.arw', '.srf', '.sr2',                    // Sony
+    '.dng',                                    // Adobe Universal RAW
+    '.orf',                                    // Olympus
+    '.rw2',                                    // Panasonic
+    '.pef', '.ptx',                            // Pentax
+    '.raf',                                    // Fujifilm
+    '.erf',                                    // Epson
+    '.mrw',                                    // Minolta
+    '.3fr', '.fff',                            // Hasselblad
+    '.iiq',                                    // Phase One
+    '.rwl',                                    // Leica
+    '.srw',                                    // Samsung
+    '.x3f',                                    // Sigma
+    // Documents
+    '.pdf',
+    // Photoshop/Design
+    '.psd', '.psb', '.ai', '.eps',
+  ]
+
+  const isValidFile = (file: File) => {
+    const ext = '.' + file.name.split('.').pop()?.toLowerCase()
+    return file.type.startsWith('image/') ||
+           file.type === 'application/pdf' ||
+           SUPPORTED_EXTENSIONS.includes(ext)
+  }
+
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    // Accept all image types including RAW formats
-    const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2']
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => {
-      const ext = '.' + f.name.split('.').pop()?.toLowerCase()
-      return f.type.startsWith('image/') || imageExtensions.includes(ext)
-    })
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(isValidFile)
     setFiles(prev => [...prev, ...droppedFiles])
   }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2']
-      const validFiles = Array.from(e.target.files).filter(f => {
-        const ext = '.' + f.name.split('.').pop()?.toLowerCase()
-        return f.type.startsWith('image/') || imageExtensions.includes(ext)
-      })
+      const validFiles = Array.from(e.target.files).filter(isValidFile)
       setFiles(prev => [...prev, ...validFiles])
     }
   }
@@ -85,7 +111,7 @@ export default function Home() {
         <input
           type="file"
           multiple={mode === 'hdr'}
-          accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.tiff,.tif,.heic,.heif"
+          accept="image/*,application/pdf,.raw,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.dng,.orf,.rw2,.pef,.ptx,.raf,.erf,.mrw,.3fr,.fff,.iiq,.rwl,.srw,.x3f,.tiff,.tif,.heic,.heif,.psd,.psb,.ai,.eps"
           onChange={handleFileSelect}
           className="hidden"
           id="file-input"
@@ -100,6 +126,9 @@ export default function Home() {
               : 'Drop a daytime exterior photo'}
           </p>
           <p className="text-gray-500">or click to browse</p>
+          <p className="text-gray-600 text-xs mt-3">
+            JPG, PNG, TIFF, RAW, PDF, PSD • Canon, Nikon, Sony, Fuji + all cameras
+          </p>
         </label>
       </div>
 
@@ -120,12 +149,24 @@ export default function Home() {
 
           <div className="grid grid-cols-4 gap-4 mb-6">
             {files.map((file, i) => (
-              <div key={i} className="aspect-video bg-gray-800 rounded-lg overflow-hidden">
-                <img
-                  src={URL.createObjectURL(file)}
-                  alt={file.name}
-                  className="w-full h-full object-cover"
-                />
+              <div key={i} className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative">
+                {file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                    <span className="text-3xl">📄</span>
+                    <span className="text-xs mt-1 truncate max-w-full px-2">{file.name}</span>
+                  </div>
+                ) : file.type.startsWith('image/') ? (
+                  <img
+                    src={URL.createObjectURL(file)}
+                    alt={file.name}
+                    className="w-full h-full object-cover"
+                  />
+                ) : (
+                  <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
+                    <span className="text-3xl">🖼️</span>
+                    <span className="text-xs mt-1 truncate max-w-full px-2">{file.name}</span>
+                  </div>
+                )}
               </div>
             ))}
           </div>
