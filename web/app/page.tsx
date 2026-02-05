@@ -10,15 +10,23 @@ export default function Home() {
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault()
-    const droppedFiles = Array.from(e.dataTransfer.files).filter(f =>
-      f.type.startsWith('image/')
-    )
+    // Accept all image types including RAW formats
+    const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2']
+    const droppedFiles = Array.from(e.dataTransfer.files).filter(f => {
+      const ext = '.' + f.name.split('.').pop()?.toLowerCase()
+      return f.type.startsWith('image/') || imageExtensions.includes(ext)
+    })
     setFiles(prev => [...prev, ...droppedFiles])
   }, [])
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      setFiles(prev => [...prev, ...Array.from(e.target.files!)])
+      const imageExtensions = ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.webp', '.heic', '.heif', '.raw', '.cr2', '.cr3', '.nef', '.arw', '.dng', '.orf', '.rw2']
+      const validFiles = Array.from(e.target.files).filter(f => {
+        const ext = '.' + f.name.split('.').pop()?.toLowerCase()
+        return f.type.startsWith('image/') || imageExtensions.includes(ext)
+      })
+      setFiles(prev => [...prev, ...validFiles])
     }
   }
 
@@ -77,7 +85,7 @@ export default function Home() {
         <input
           type="file"
           multiple={mode === 'hdr'}
-          accept="image/*"
+          accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.tiff,.tif,.heic,.heif"
           onChange={handleFileSelect}
           className="hidden"
           id="file-input"
