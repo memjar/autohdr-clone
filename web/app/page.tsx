@@ -2,10 +2,27 @@
 
 import { useState, useCallback } from 'react'
 
-// Backend URL - switch between local Python backend and Vercel API
-// Local: http://localhost:8000 (supports RAW files)
-// Vercel: '' (empty = use /api/process, no RAW support)
-const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+// Version for cache-busting verification
+const APP_VERSION = 'v1.1.0'
+
+// RAW file extensions (browsers can't display these)
+const RAW_EXTENSIONS = [
+  '.arw', '.srf', '.sr2',  // Sony
+  '.cr2', '.cr3', '.crw',  // Canon
+  '.nef', '.nrw',          // Nikon
+  '.dng',                  // Adobe
+  '.orf',                  // Olympus
+  '.rw2',                  // Panasonic
+  '.pef', '.ptx',          // Pentax
+  '.raf',                  // Fujifilm
+  '.raw', '.3fr', '.fff', '.iiq', '.rwl', '.srw', '.x3f',
+]
+
+// Check if file is a RAW format
+const isRawFile = (filename: string): boolean => {
+  const ext = '.' + filename.split('.').pop()?.toLowerCase()
+  return RAW_EXTENSIONS.includes(ext)
+}
 
 export default function Home() {
   const [files, setFiles] = useState<File[]>([])
@@ -14,7 +31,7 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
-  const [useLocalBackend, setUseLocalBackend] = useState(false)
+  const [useLocalBackend, setUseLocalBackend] = useState(true) // Default to local for RAW support
 
   // All supported file extensions for photographers/realtors
   const SUPPORTED_EXTENSIONS = [
@@ -221,8 +238,19 @@ export default function Home() {
 
           <div className="grid grid-cols-4 gap-4 mb-6">
             {files.map((file, i) => (
-              <div key={i} className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative">
-                {file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ? (
+              <div key={i} className="aspect-video bg-gray-800 rounded-lg overflow-hidden relative group">
+                {/* RAW files - show camera icon */}
+                {isRawFile(file.name) ? (
+                  <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-gray-700 to-gray-800">
+                    <div className="text-4xl mb-2">📷</div>
+                    <span className="text-xs text-gray-300 font-medium px-2 py-1 bg-gray-900/50 rounded">
+                      {file.name.split('.').pop()?.toUpperCase()}
+                    </span>
+                    <span className="text-[10px] text-gray-500 mt-1 truncate max-w-full px-2">
+                      {file.name}
+                    </span>
+                  </div>
+                ) : file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf') ? (
                   <div className="w-full h-full flex flex-col items-center justify-center text-gray-400">
                     <span className="text-3xl">📄</span>
                     <span className="text-xs mt-1 truncate max-w-full px-2">{file.name}</span>
@@ -239,6 +267,10 @@ export default function Home() {
                     <span className="text-xs mt-1 truncate max-w-full px-2">{file.name}</span>
                   </div>
                 )}
+                {/* Exposure indicator for brackets */}
+                <div className="absolute bottom-1 right-1 text-[10px] text-gray-400 bg-black/50 px-1 rounded">
+                  {i === 0 ? '−EV' : i === files.length - 1 ? '+EV' : '0'}
+                </div>
               </div>
             ))}
           </div>
@@ -329,6 +361,9 @@ export default function Home() {
       {/* Footer */}
       <footer className="mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
         <p>Open source • <a href="https://github.com/memjar/autohdr-clone" className="text-blue-400 hover:underline">GitHub</a></p>
+        <p className="mt-2 text-xs text-gray-600">
+          {APP_VERSION} • Backend: {useLocalBackend ? '🟢 localhost:8000' : '☁️ Vercel API'}
+        </p>
       </footer>
     </main>
   )
