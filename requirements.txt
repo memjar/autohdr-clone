@@ -1,0 +1,35 @@
+# Core Image Processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+Pillow>=10.0.0
+scikit-image>=0.21.0
+rawpy>=0.18.0
+
+# Deep Learning
+torch>=2.0.0
+torchvision>=0.15.0
+transformers>=4.30.0
+diffusers>=0.21.0
+
+# Segmentation & Detection
+segment-anything>=1.0
+ultralytics>=8.0.0  # YOLO
+
+# API
+fastapi>=0.100.0
+uvicorn>=0.23.0
+python-multipart>=0.0.6
+
+# Queue & Workers
+celery>=5.3.0
+redis>=4.6.0
+
+# Utilities
+pydantic>=2.0.0
+httpx>=0.24.0
+tqdm>=4.65.0
+loguru>=0.7.0
+
+# Optional: Inpainting
+# pip install git+https://github.com/advimman/lama.git
+# pip install git+https://github.com/Sanster/IOPaint.git
