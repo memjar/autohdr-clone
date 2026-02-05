@@ -2,6 +2,11 @@
 
 import { useState, useCallback } from 'react'
 
+// Backend URL - switch between local Python backend and Vercel API
+// Local: http://localhost:8000 (supports RAW files)
+// Vercel: '' (empty = use /api/process, no RAW support)
+const BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || ''
+
 export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [processing, setProcessing] = useState(false)
@@ -9,6 +14,7 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
+  const [useLocalBackend, setUseLocalBackend] = useState(false)
 
   // All supported file extensions for photographers/realtors
   const SUPPORTED_EXTENSIONS = [
@@ -73,8 +79,15 @@ export default function Home() {
         formData.append('images', file)
       })
 
+      // Determine API URL
+      // Local backend: http://localhost:8000/process (RAW support)
+      // Vercel API: /api/process (no RAW support)
+      const apiUrl = useLocalBackend
+        ? `http://localhost:8000/process?mode=${mode}`
+        : `/api/process?mode=${mode}`
+
       // Call the processing API
-      const response = await fetch(`/api/process?mode=${mode}`, {
+      const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
       })
@@ -121,6 +134,20 @@ export default function Home() {
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-2">AutoHDR Clone</h1>
         <p className="text-gray-400">Open-source AI real estate photo editing</p>
+      </div>
+
+      {/* Backend Toggle */}
+      <div className="flex justify-center mb-4">
+        <button
+          onClick={() => setUseLocalBackend(!useLocalBackend)}
+          className={`text-xs px-3 py-1 rounded-full transition ${
+            useLocalBackend
+              ? 'bg-green-600/20 text-green-400 border border-green-600'
+              : 'bg-gray-800 text-gray-500 border border-gray-700'
+          }`}
+        >
+          {useLocalBackend ? '🟢 Local Backend (RAW support)' : '☁️ Cloud API (JPG/PNG only)'}
+        </button>
       </div>
 
       {/* Mode Toggle */}

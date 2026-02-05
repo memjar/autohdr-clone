@@ -2,37 +2,60 @@
 AutoHDR Clone - FastAPI Backend
 ================================
 
-REST API for real estate photo editing.
+REST API for real estate photo editing with RAW file support.
 
-Run:
+Run locally:
+    cd /path/to/autohdr-clone
     uvicorn src.api.main:app --reload --port 8000
 
+Deploy to Railway:
+    Set start command: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+
 Endpoints:
+    POST /process            - Main processing endpoint (matches Vercel frontend)
     POST /hdr/merge          - Merge HDR brackets
     POST /effects/day-to-dusk - Convert to twilight
-    POST /edit/remove        - Remove objects (coming soon)
     GET  /health             - Health check
 """
 
 import io
-import uuid
-import tempfile
 from pathlib import Path
 from typing import List, Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form
-from fastapi.responses import StreamingResponse, JSONResponse
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
+from fastapi.responses import StreamingResponse, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# RAW file support
+try:
+    import rawpy
+    HAS_RAWPY = True
+except ImportError:
+    HAS_RAWPY = False
+    print("Warning: rawpy not installed. RAW file support disabled.")
 
 # Import our modules
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.core.hdr_merge import HDRMerger, HDRConfig
-from src.models.twilight import TwilightConverter, TwilightConfig
+from src.core.processor import AutoHDRProcessor, ProcessingSettings
+
+# Try to import HDR merger (may not exist yet)
+try:
+    from src.core.hdr_merge import HDRMerger, HDRConfig
+    HAS_HDR_MERGER = True
+except ImportError:
+    HAS_HDR_MERGER = False
+
+# Try to import twilight (may not exist yet)
+try:
+    from src.models.twilight import TwilightConverter, TwilightConfig
+    HAS_TWILIGHT = True
+except ImportError:
+    HAS_TWILIGHT = False
 
 app = FastAPI(
     title="AutoHDR Clone API",
@@ -43,11 +66,40 @@ app = FastAPI(
 # CORS for web frontend
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "http://localhost:3000",
+        "https://autohdr-clone.vercel.app",
+        "https://*.vercel.app",
+        "*"  # Allow all for development
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================
+# RAW FILE EXTENSIONS
+# ============================================
+
+RAW_EXTENSIONS = {
+    '.arw', '.srf', '.sr2',  # Sony
+    '.cr2', '.cr3', '.crw',  # Canon
+    '.nef', '.nrw',          # Nikon
+    '.dng',                  # Adobe
+    '.orf',                  # Olympus
+    '.rw2',                  # Panasonic
+    '.pef', '.ptx',          # Pentax
+    '.raf',                  # Fujifilm
+    '.erf',                  # Epson
+    '.mrw',                  # Minolta
+    '.3fr', '.fff',          # Hasselblad
+    '.iiq',                  # Phase One
+    '.rwl',                  # Leica
+    '.srw',                  # Samsung
+    '.x3f',                  # Sigma
+    '.raw',                  # Generic
+}
 
 
 # ============================================
@@ -76,21 +128,98 @@ class ProcessingResponse(BaseModel):
 # ============================================
 
 def read_image_from_upload(file: UploadFile) -> np.ndarray:
-    """Read uploaded file into OpenCV image."""
+    """Read uploaded file into OpenCV image, including RAW formats."""
     contents = file.file.read()
+    filename = file.filename or "image.jpg"
+    ext = Path(filename).suffix.lower()
+
+    # Handle RAW files
+    if ext in RAW_EXTENSIONS:
+        if not HAS_RAWPY:
+            raise HTTPException(400, f"RAW file support not available. Install rawpy.")
+        try:
+            with rawpy.imread(io.BytesIO(contents)) as raw:
+                rgb = raw.postprocess(
+                    use_camera_wb=True,
+                    half_size=False,
+                    no_auto_bright=False,
+                    output_bps=8
+                )
+                # Convert RGB to BGR for OpenCV
+                return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            raise HTTPException(400, f"Could not decode RAW file {filename}: {str(e)}")
+
+    # Standard image formats
     nparr = np.frombuffer(contents, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if image is None:
-        raise HTTPException(400, f"Could not decode image: {file.filename}")
+        raise HTTPException(400, f"Could not decode image: {filename}")
     return image
 
 
-def image_to_bytes(image: np.ndarray, format: str = ".jpg") -> bytes:
+async def read_image_async(file: UploadFile) -> np.ndarray:
+    """Async version of read_image_from_upload."""
+    contents = await file.read()
+    filename = file.filename or "image.jpg"
+    ext = Path(filename).suffix.lower()
+
+    # Handle RAW files
+    if ext in RAW_EXTENSIONS:
+        if not HAS_RAWPY:
+            raise HTTPException(400, f"RAW file support not available. Install rawpy.")
+        try:
+            with rawpy.imread(io.BytesIO(contents)) as raw:
+                rgb = raw.postprocess(
+                    use_camera_wb=True,
+                    half_size=False,
+                    no_auto_bright=False,
+                    output_bps=8
+                )
+                return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        except Exception as e:
+            raise HTTPException(400, f"Could not decode RAW file {filename}: {str(e)}")
+
+    # Standard image formats
+    nparr = np.frombuffer(contents, np.uint8)
+    image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if image is None:
+        raise HTTPException(400, f"Could not decode image: {filename}")
+    return image
+
+
+def image_to_bytes(image: np.ndarray, format: str = ".jpg", quality: int = 90) -> bytes:
     """Convert OpenCV image to bytes."""
-    success, encoded = cv2.imencode(format, image)
+    if format == ".jpg":
+        encode_params = [cv2.IMWRITE_JPEG_QUALITY, quality]
+    else:
+        encode_params = []
+    success, encoded = cv2.imencode(format, image, encode_params)
     if not success:
         raise HTTPException(500, "Failed to encode result image")
     return encoded.tobytes()
+
+
+def merge_brackets_mertens(images: List[np.ndarray]) -> np.ndarray:
+    """Merge bracketed exposures using Mertens exposure fusion."""
+    if len(images) == 1:
+        return images[0]
+
+    # Ensure all images same size
+    base_shape = images[0].shape[:2]
+    resized = []
+    for img in images:
+        if img.shape[:2] != base_shape:
+            img = cv2.resize(img, (base_shape[1], base_shape[0]))
+        resized.append(img)
+
+    # Mertens exposure fusion
+    merge_mertens = cv2.createMergeMertens()
+    images_float = [img.astype(np.float32) / 255.0 for img in resized]
+    fusion = merge_mertens.process(images_float)
+    fusion = np.clip(fusion * 255, 0, 255).astype(np.uint8)
+
+    return fusion
 
 
 # ============================================
@@ -101,20 +230,100 @@ def image_to_bytes(image: np.ndarray, format: str = ".jpg") -> bytes:
 async def root():
     return {
         "name": "AutoHDR Clone API",
-        "version": "0.1.0",
+        "version": "1.0.0",
         "endpoints": {
-            "hdr_merge": "/hdr/merge",
-            "day_to_dusk": "/effects/day-to-dusk",
-            "remove_object": "/edit/remove (coming soon)",
-            "health": "/health"
+            "process": "POST /process - Main endpoint (HDR merge or twilight)",
+            "hdr_merge": "POST /hdr/merge - Legacy HDR merge",
+            "day_to_dusk": "POST /effects/day-to-dusk - Legacy twilight",
+            "health": "GET /health - Status check"
+        },
+        "features": {
+            "raw_support": HAS_RAWPY,
+            "formats": list(RAW_EXTENSIONS) if HAS_RAWPY else ["jpg", "png", "tiff"]
         }
     }
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok"}
+    return {
+        "status": "ok",
+        "rawpy": HAS_RAWPY,
+        "hdr_merger": HAS_HDR_MERGER,
+        "twilight": HAS_TWILIGHT
+    }
 
+
+# ============================================
+# MAIN PROCESSING ENDPOINT (matches Vercel frontend)
+# ============================================
+
+@app.post("/process")
+async def process_images(
+    images: List[UploadFile] = File(..., description="Images to process"),
+    mode: str = Query("hdr", description="Processing mode: hdr or twilight"),
+    brightness: float = Query(0, ge=-2, le=2),
+    contrast: float = Query(0, ge=-2, le=2),
+    vibrance: float = Query(0, ge=-2, le=2),
+    whiteBalance: float = Query(0, ge=-2, le=2),
+):
+    """
+    Main processing endpoint - matches Vercel frontend API.
+
+    - **HDR mode**: Upload 2-9 bracketed exposures, merges with Mertens fusion
+    - **Twilight mode**: Upload 1 daytime photo, converts to dusk
+
+    Supports all RAW formats: ARW, CR2, NEF, DNG, etc.
+    """
+    if not images:
+        raise HTTPException(400, "No images provided")
+
+    try:
+        # Read all images (including RAW)
+        image_arrays = []
+        for upload in images:
+            img = await read_image_async(upload)
+            image_arrays.append(img)
+
+        # Configure processor
+        settings = ProcessingSettings(
+            brightness=brightness,
+            contrast=contrast,
+            vibrance=vibrance,
+            white_balance=whiteBalance,
+        )
+
+        if mode == "twilight":
+            # Twilight processing
+            settings.twilight_style = "pink"
+            processor = AutoHDRProcessor(settings)
+            result = processor.process(image_arrays[0])
+        else:
+            # HDR bracket merging
+            merged = merge_brackets_mertens(image_arrays)
+            processor = AutoHDRProcessor(settings)
+            result = processor.process(merged)
+
+        # Return as high-quality JPEG
+        result_bytes = image_to_bytes(result, ".jpg", quality=90)
+
+        return Response(
+            content=result_bytes,
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": f'attachment; filename="autohdr_{mode}.jpg"'
+            }
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(500, f"Processing failed: {str(e)}")
+
+
+# ============================================
+# LEGACY ENDPOINTS (for direct API use)
+# ============================================
 
 @app.post("/hdr/merge")
 async def hdr_merge(
@@ -128,48 +337,27 @@ async def hdr_merge(
 
     Upload 2-9 images taken at different exposures.
     Returns the merged, tone-mapped result.
-
-    Methods:
-    - mertens: Exposure fusion (no exposure data needed) - recommended
-    - debevec: Traditional HDR (estimates exposures)
-    - robertson: Iterative HDR (estimates exposures)
-
-    Tone mapping (for debevec/robertson):
-    - reinhard: Natural look
-    - drago: More contrast
-    - mantiuk: Local contrast
     """
     if len(images) < 2:
         raise HTTPException(400, "Need at least 2 images for HDR merge")
     if len(images) > 9:
         raise HTTPException(400, "Maximum 9 images supported")
 
-    # Read all images
+    # Read all images (with RAW support)
     loaded_images = []
     for img_file in images:
-        img = read_image_from_upload(img_file)
+        img = await read_image_async(img_file)
         loaded_images.append(img)
 
-    # Configure merger
-    config = HDRConfig(
-        align_images=align,
-        merge_method=method,
-        tone_map_method=tone_map
-    )
+    # Use Mertens fusion (built-in, always works)
+    result = merge_brackets_mertens(loaded_images)
 
-    # Merge
-    merger = HDRMerger(config)
-
-    # Estimate exposures if needed
-    exposures = None
-    if method in ["debevec", "robertson"]:
-        from src.core.hdr_merge import estimate_exposures
-        exposures = estimate_exposures(loaded_images)
-
-    result = merger.merge_brackets(loaded_images, exposures)
+    # Apply HDR processing
+    processor = AutoHDRProcessor(ProcessingSettings())
+    result = processor.process(result)
 
     # Return as JPEG
-    result_bytes = image_to_bytes(result, ".jpg")
+    result_bytes = image_to_bytes(result, ".jpg", quality=90)
 
     return StreamingResponse(
         io.BytesIO(result_bytes),
@@ -181,31 +369,28 @@ async def hdr_merge(
 @app.post("/effects/day-to-dusk")
 async def day_to_dusk(
     image: UploadFile = File(...),
-    sky_intensity: float = Form(0.9),
-    window_glow: float = Form(0.8),
-    brightness: float = Form(0.7)
+    style: str = Form("pink"),  # pink, blue, orange
+    brightness: float = Form(-0.5),  # -2 to 2
 ):
     """
     Convert daytime exterior photo to twilight/dusk.
 
     Parameters:
-    - sky_intensity: How much to blend the twilight sky (0-1)
-    - window_glow: Intensity of window lighting effect (0-1)
-    - brightness: Overall brightness reduction (0-1, lower = darker)
+    - style: Twilight color (pink, blue, orange)
+    - brightness: Adjustment (-2 to 2, negative = darker)
     """
-    # Read image
-    img = read_image_from_upload(image)
+    # Read image (with RAW support)
+    img = await read_image_async(image)
 
-    # Configure
-    config = TwilightConfig(
-        sky_blend_strength=sky_intensity,
-        window_glow_intensity=window_glow,
-        brightness_reduction=brightness
+    # Configure for twilight
+    settings = ProcessingSettings(
+        brightness=brightness,
+        twilight_style=style if style in ["pink", "blue", "orange"] else "pink"
     )
 
-    # Convert
-    converter = TwilightConverter(config)
-    result = converter.convert(img)
+    # Process
+    processor = AutoHDRProcessor(settings)
+    result = processor.process(img)
 
     # Return as JPEG
     result_bytes = image_to_bytes(result, ".jpg")
@@ -244,44 +429,10 @@ async def sky_replace(
     """
     Replace sky in image.
 
-    Sky types:
-    - twilight: Dusk gradient (blue to orange)
-    - blue: Clear blue sky
-    - dramatic: Dark stormy clouds
-    - cloudy: Overcast white/grey
-
-    Coming soon: Custom sky upload.
+    Coming soon: Requires sky segmentation model.
     """
-    # Read image
-    img = read_image_from_upload(image)
-
-    # Use twilight converter's sky replacement
-    converter = TwilightConverter()
-    sky_mask = converter.segment_sky(img)
-
-    # Create sky based on type
-    if sky_type == "twilight":
-        new_sky = converter.create_twilight_sky(img.shape[:2])
-    elif sky_type == "blue":
-        # Create blue gradient
-        h, w = img.shape[:2]
-        new_sky = np.zeros((h, w, 3), dtype=np.uint8)
-        for y in range(h):
-            ratio = y / h
-            new_sky[y, :] = [255 - int(100 * ratio), 200 - int(50 * ratio), 50 + int(50 * ratio)]
-    else:
-        raise HTTPException(400, f"Unknown sky type: {sky_type}")
-
-    # Replace
-    result = converter.replace_sky(img, sky_mask, new_sky)
-
-    # Return
-    result_bytes = image_to_bytes(result, ".jpg")
-    return StreamingResponse(
-        io.BytesIO(result_bytes),
-        media_type="image/jpeg",
-        headers={"Content-Disposition": "attachment; filename=sky_replaced.jpg"}
-    )
+    # TODO: Implement with sky segmentation
+    raise HTTPException(501, "Sky replacement coming soon. Requires segmentation model.")
 
 
 # ============================================
