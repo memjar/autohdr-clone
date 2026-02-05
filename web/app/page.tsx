@@ -6,6 +6,8 @@ export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [processing, setProcessing] = useState(false)
   const [result, setResult] = useState<string | null>(null)
+  const [resultUrl, setResultUrl] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
 
   // All supported file extensions for photographers/realtors
@@ -61,13 +63,56 @@ export default function Home() {
 
     setProcessing(true)
     setResult(null)
+    setResultUrl(null)
+    setError(null)
 
-    // TODO: Connect to backend API
-    // For now, simulate processing
-    await new Promise(r => setTimeout(r, 2000))
+    try {
+      // Create FormData with all images
+      const formData = new FormData()
+      files.forEach((file) => {
+        formData.append('images', file)
+      })
 
-    setProcessing(false)
-    setResult('Processing complete! (Backend not connected yet)')
+      // Call the processing API
+      const response = await fetch(`/api/process?mode=${mode}`, {
+        method: 'POST',
+        body: formData,
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => ({}))
+        throw new Error(errorData.error || `Processing failed: ${response.status}`)
+      }
+
+      // Get the processed image blob
+      const blob = await response.blob()
+      const url = URL.createObjectURL(blob)
+
+      setResultUrl(url)
+      setResult('Processing complete! Click to download.')
+    } catch (err: any) {
+      console.error('Processing error:', err)
+      setError(err.message || 'Processing failed')
+    } finally {
+      setProcessing(false)
+    }
+  }
+
+  const downloadResult = () => {
+    if (!resultUrl) return
+    const a = document.createElement('a')
+    a.href = resultUrl
+    a.download = `processed_${mode}_${Date.now()}.jpg`
+    document.body.appendChild(a)
+    a.click()
+    document.body.removeChild(a)
+  }
+
+  const resetAll = () => {
+    setFiles([])
+    setResult(null)
+    setResultUrl(null)
+    setError(null)
   }
 
   return (
@@ -193,10 +238,45 @@ export default function Home() {
         </div>
       )}
 
+      {/* Error */}
+      {error && (
+        <div className="mt-8 p-6 bg-red-900/30 border border-red-700 rounded-lg">
+          <p className="text-red-400">{error}</p>
+        </div>
+      )}
+
       {/* Result */}
-      {result && (
-        <div className="mt-8 p-6 bg-green-900/30 border border-green-700 rounded-lg">
-          <p className="text-green-400">{result}</p>
+      {resultUrl && (
+        <div className="mt-8">
+          <div className="flex justify-between items-center mb-4">
+            <h2 className="text-lg font-semibold text-green-400">Processing Complete!</h2>
+            <button
+              onClick={resetAll}
+              className="text-gray-400 hover:text-gray-300"
+            >
+              Start Over
+            </button>
+          </div>
+
+          {/* Preview */}
+          <div className="rounded-xl overflow-hidden bg-gray-800 mb-4">
+            <img
+              src={resultUrl}
+              alt="Processed result"
+              className="w-full h-auto"
+            />
+          </div>
+
+          {/* Download Button */}
+          <button
+            onClick={downloadResult}
+            className="w-full py-3 bg-green-600 hover:bg-green-500 rounded-lg font-semibold transition flex items-center justify-center gap-2"
+          >
+            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+            </svg>
+            Download Processed Image
+          </button>
         </div>
       )}
 
