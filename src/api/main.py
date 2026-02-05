@@ -2,65 +2,75 @@
 AutoHDR Clone - FastAPI Backend
 ================================
 
-REST API for real estate photo editing with RAW file support.
+REST API for real estate photo editing with full RAW file support.
 
-Run locally:
-    cd /path/to/autohdr-clone
-    uvicorn src.api.main:app --reload --port 8000
+Supports: ARW (Sony), CR2/CR3 (Canon), NEF (Nikon), DNG, RAF (Fuji), etc.
 
-Deploy to Railway:
-    Set start command: uvicorn src.api.main:app --host 0.0.0.0 --port $PORT
+Run:
+    ./start-backend.sh
 
 Endpoints:
-    POST /process            - Main processing endpoint (matches Vercel frontend)
-    POST /hdr/merge          - Merge HDR brackets
-    POST /effects/day-to-dusk - Convert to twilight
-    GET  /health             - Health check
+    POST /process   - Main processing (HDR merge or twilight)
+    GET  /health    - Health check
+    GET  /test      - Test processing with generated image
 """
 
 import io
+import time
+import traceback
 from pathlib import Path
 from typing import List, Optional
 
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
-from fastapi.responses import StreamingResponse, Response
+from fastapi.responses import StreamingResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+
+# ============================================
+# DEPENDENCY CHECKS
+# ============================================
 
 # RAW file support
 try:
     import rawpy
     HAS_RAWPY = True
+    RAWPY_VERSION = rawpy.__version__ if hasattr(rawpy, '__version__') else 'unknown'
 except ImportError:
     HAS_RAWPY = False
-    print("Warning: rawpy not installed. RAW file support disabled.")
+    RAWPY_VERSION = None
+    print("⚠️  Warning: rawpy not installed. RAW file support disabled.")
+    print("   Install with: pip install rawpy")
 
-# Import our modules
+# OpenCV version
+CV2_VERSION = cv2.__version__
+
+# Import our processor
 import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from src.core.processor import AutoHDRProcessor, ProcessingSettings
-
-# Try to import HDR merger (may not exist yet)
 try:
-    from src.core.hdr_merge import HDRMerger, HDRConfig
-    HAS_HDR_MERGER = True
-except ImportError:
-    HAS_HDR_MERGER = False
+    from src.core.processor import AutoHDRProcessor, ProcessingSettings
+    HAS_PROCESSOR = True
+except ImportError as e:
+    HAS_PROCESSOR = False
+    print(f"⚠️  Warning: Could not import processor: {e}")
 
-# Try to import twilight (may not exist yet)
-try:
-    from src.models.twilight import TwilightConverter, TwilightConfig
-    HAS_TWILIGHT = True
-except ImportError:
-    HAS_TWILIGHT = False
+# Optional modules
+HAS_HDR_MERGER = False
+HAS_TWILIGHT = False
+
+# ============================================
+# APP SETUP
+# ============================================
 
 app = FastAPI(
     title="AutoHDR Clone API",
-    description="Open-source AI real estate photo editing",
-    version="0.1.0"
+    description="Open-source AI real estate photo editing with RAW support",
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 # CORS for web frontend
@@ -76,6 +86,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ============================================
+# STARTUP EVENT
+# ============================================
+
+@app.on_event("startup")
+async def startup_event():
+    """Print status on startup."""
+    print("")
+    print("╔══════════════════════════════════════════════════════════════╗")
+    print("║           AutoHDR Clone - Backend Server                     ║")
+    print("╠══════════════════════════════════════════════════════════════╣")
+    print(f"║  OpenCV:     {CV2_VERSION:<10} ✓                                 ║")
+    if HAS_RAWPY:
+        print(f"║  rawpy:      {RAWPY_VERSION:<10} ✓  (ARW/CR2/NEF support)       ║")
+    else:
+        print("║  rawpy:      NOT INSTALLED ✗  (RAW files disabled)        ║")
+    if HAS_PROCESSOR:
+        print("║  Processor:  Ready      ✓                                   ║")
+    else:
+        print("║  Processor:  NOT FOUND  ✗                                   ║")
+    print("╠══════════════════════════════════════════════════════════════╣")
+    print("║  Endpoints:                                                   ║")
+    print("║    POST /process   - Process images (HDR or twilight)         ║")
+    print("║    GET  /test      - Test processing pipeline                 ║")
+    print("║    GET  /health    - Health check                             ║")
+    print("║    GET  /docs      - API documentation                        ║")
+    print("╚══════════════════════════════════════════════════════════════╝")
+    print("")
 
 
 # ============================================
@@ -228,30 +268,95 @@ def merge_brackets_mertens(images: List[np.ndarray]) -> np.ndarray:
 
 @app.get("/")
 async def root():
+    """API info and capabilities."""
     return {
         "name": "AutoHDR Clone API",
         "version": "1.0.0",
-        "endpoints": {
-            "process": "POST /process - Main endpoint (HDR merge or twilight)",
-            "hdr_merge": "POST /hdr/merge - Legacy HDR merge",
-            "day_to_dusk": "POST /effects/day-to-dusk - Legacy twilight",
-            "health": "GET /health - Status check"
-        },
-        "features": {
+        "status": "running",
+        "capabilities": {
             "raw_support": HAS_RAWPY,
-            "formats": list(RAW_EXTENSIONS) if HAS_RAWPY else ["jpg", "png", "tiff"]
+            "processor": HAS_PROCESSOR,
+            "opencv": CV2_VERSION,
+        },
+        "supported_formats": {
+            "standard": ["jpg", "jpeg", "png", "tiff", "bmp", "webp"],
+            "raw": list(RAW_EXTENSIONS) if HAS_RAWPY else []
+        },
+        "endpoints": {
+            "POST /process": "Main processing endpoint",
+            "GET /health": "Health check",
+            "GET /test": "Test processing pipeline",
+            "GET /docs": "API documentation"
         }
     }
 
 
 @app.get("/health")
 async def health():
+    """Health check - returns system status."""
     return {
-        "status": "ok",
-        "rawpy": HAS_RAWPY,
-        "hdr_merger": HAS_HDR_MERGER,
-        "twilight": HAS_TWILIGHT
+        "status": "healthy",
+        "components": {
+            "rawpy": {"installed": HAS_RAWPY, "version": RAWPY_VERSION},
+            "opencv": {"installed": True, "version": CV2_VERSION},
+            "processor": {"installed": HAS_PROCESSOR},
+        },
+        "raw_formats_supported": len(RAW_EXTENSIONS) if HAS_RAWPY else 0,
     }
+
+
+@app.get("/test")
+async def test_processing():
+    """
+    Test the processing pipeline with a generated gradient image.
+    Returns a processed test image to verify the pipeline works.
+    """
+    if not HAS_PROCESSOR:
+        raise HTTPException(500, "Processor not available")
+
+    try:
+        start_time = time.time()
+
+        # Create a test gradient image (simulates a photo with shadows and highlights)
+        height, width = 480, 640
+        test_image = np.zeros((height, width, 3), dtype=np.uint8)
+
+        # Gradient background (sky simulation)
+        for y in range(height):
+            ratio = y / height
+            test_image[y, :] = [
+                int(255 * (1 - ratio * 0.5)),  # Blue (sky to ground)
+                int(200 * (1 - ratio * 0.3)),  # Green
+                int(180 * (1 - ratio * 0.4)),  # Red
+            ]
+
+        # Add some "windows" (bright rectangles)
+        cv2.rectangle(test_image, (100, 200), (200, 350), (255, 255, 255), -1)
+        cv2.rectangle(test_image, (450, 180), (550, 320), (255, 255, 255), -1)
+
+        # Add "shadows" (dark areas)
+        cv2.rectangle(test_image, (250, 350), (400, 450), (30, 30, 30), -1)
+
+        # Process with default settings
+        processor = AutoHDRProcessor(ProcessingSettings())
+        result = processor.process(test_image)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+
+        # Encode as JPEG
+        _, buffer = cv2.imencode('.jpg', result, [cv2.IMWRITE_JPEG_QUALITY, 85])
+
+        return Response(
+            content=buffer.tobytes(),
+            media_type="image/jpeg",
+            headers={
+                "Content-Disposition": "inline; filename=test_result.jpg",
+                "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+            }
+        )
+
+    except Exception as e:
+        raise HTTPException(500, f"Test failed: {str(e)}")
 
 
 # ============================================
@@ -275,17 +380,39 @@ async def process_images(
 
     Supports all RAW formats: ARW, CR2, NEF, DNG, etc.
     """
+    start_time = time.time()
+
+    # Validate
     if not images:
         raise HTTPException(400, "No images provided")
 
-    try:
-        # Read all images (including RAW)
-        image_arrays = []
-        for upload in images:
-            img = await read_image_async(upload)
-            image_arrays.append(img)
+    if not HAS_PROCESSOR:
+        raise HTTPException(500, "Processor not available - check server logs")
 
-        # Configure processor
+    # Log request
+    filenames = [img.filename for img in images]
+    print(f"📸 Processing {len(images)} images: {filenames}")
+    print(f"   Mode: {mode}, Settings: b={brightness}, c={contrast}, v={vibrance}, wb={whiteBalance}")
+
+    try:
+        # ==========================================
+        # STEP 1: Read all images (including RAW)
+        # ==========================================
+        image_arrays = []
+        for i, upload in enumerate(images):
+            print(f"   Reading [{i+1}/{len(images)}]: {upload.filename}")
+            try:
+                img = await read_image_async(upload)
+                print(f"   ✓ Loaded: {img.shape[1]}x{img.shape[0]} pixels")
+                image_arrays.append(img)
+            except HTTPException:
+                raise
+            except Exception as e:
+                raise HTTPException(400, f"Failed to read {upload.filename}: {str(e)}")
+
+        # ==========================================
+        # STEP 2: Process
+        # ==========================================
         settings = ProcessingSettings(
             brightness=brightness,
             contrast=contrast,
@@ -294,30 +421,40 @@ async def process_images(
         )
 
         if mode == "twilight":
-            # Twilight processing
+            print("   Applying twilight effect...")
             settings.twilight_style = "pink"
             processor = AutoHDRProcessor(settings)
             result = processor.process(image_arrays[0])
         else:
-            # HDR bracket merging
+            print(f"   Merging {len(image_arrays)} brackets with Mertens fusion...")
             merged = merge_brackets_mertens(image_arrays)
+            print(f"   Applying HDR processing...")
             processor = AutoHDRProcessor(settings)
             result = processor.process(merged)
 
-        # Return as high-quality JPEG
+        # ==========================================
+        # STEP 3: Encode and return
+        # ==========================================
         result_bytes = image_to_bytes(result, ".jpg", quality=90)
+
+        elapsed_ms = (time.time() - start_time) * 1000
+        print(f"   ✓ Complete in {elapsed_ms:.0f}ms, output: {len(result_bytes)} bytes")
 
         return Response(
             content=result_bytes,
             media_type="image/jpeg",
             headers={
-                "Content-Disposition": f'attachment; filename="autohdr_{mode}.jpg"'
+                "Content-Disposition": f'attachment; filename="autohdr_{mode}.jpg"',
+                "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                "X-Images-Processed": str(len(images)),
             }
         )
 
     except HTTPException:
         raise
     except Exception as e:
+        print(f"   ✗ ERROR: {str(e)}")
+        traceback.print_exc()
         raise HTTPException(500, f"Processing failed: {str(e)}")
 
 

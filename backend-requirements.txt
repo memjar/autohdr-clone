@@ -1,0 +1,14 @@
+# AutoHDR Clone - Backend Requirements (Minimal)
+# Install: pip install -r backend-requirements.txt
+
+# Core image processing
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# RAW file support (Sony ARW, Canon CR2, Nikon NEF, etc.)
+rawpy>=0.18.0
+
+# API server
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
