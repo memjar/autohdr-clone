@@ -1,0 +1,38 @@
+# AutoHDR Clone - AI Model Requirements
+# =====================================
+# Install: pip install -r ai-requirements.txt
+#
+# WARNING: These require significant disk space and GPU is recommended
+# Total size: ~5-10GB of model weights
+
+# Core (already in backend-requirements.txt)
+opencv-python>=4.8.0
+numpy>=1.24.0
+rawpy>=0.18.0
+fastapi>=0.100.0
+uvicorn[standard]>=0.23.0
+python-multipart>=0.0.6
+
+# PyTorch (required for all AI models)
+torch>=2.0.0
+torchvision>=0.15.0
+
+# SAM - Segment Anything Model
+# Precise segmentation of sky, grass, windows, etc.
+transformers>=4.30.0
+
+# YOLOv8 - Object Detection
+# Detect windows, TVs, signs, furniture
+ultralytics>=8.0.0
+
+# LaMa - Large Mask Inpainting
+# High-quality object removal
+# Note: lama-cleaner is the easiest way to use LaMa
+lama-cleaner>=1.2.0
+
+# Real-ESRGAN - Image Enhancement (Optional)
+# Final quality pass
+# realesrgan>=0.3.0
+
+# Pillow for image handling
+Pillow>=10.0.0

@@ -57,6 +57,14 @@ except ImportError as e:
     HAS_PROCESSOR = False
     print(f"⚠️  Warning: Could not import processor: {e}")
 
+# AI-enhanced processor (optional)
+try:
+    from src.core.processor_ai import AIEnhancedProcessor, AIProcessingSettings
+    HAS_AI_PROCESSOR = True
+except ImportError as e:
+    HAS_AI_PROCESSOR = False
+    print(f"ℹ️  AI processor not available (install ai-requirements.txt for 90% quality)")
+
 # Optional modules
 HAS_HDR_MERGER = False
 HAS_TWILIGHT = False
@@ -300,8 +308,10 @@ async def health():
             "rawpy": {"installed": HAS_RAWPY, "version": RAWPY_VERSION},
             "opencv": {"installed": True, "version": CV2_VERSION},
             "processor": {"installed": HAS_PROCESSOR},
+            "ai_processor": {"installed": HAS_AI_PROCESSOR, "note": "SAM + YOLOv8 + LaMa"},
         },
         "raw_formats_supported": len(RAW_EXTENSIONS) if HAS_RAWPY else 0,
+        "quality_level": "90% AutoHDR" if HAS_AI_PROCESSOR else "60% AutoHDR (install ai-requirements.txt for 90%)",
     }
 
 
@@ -371,12 +381,16 @@ async def process_images(
     contrast: float = Query(0, ge=-2, le=2),
     vibrance: float = Query(0, ge=-2, le=2),
     whiteBalance: float = Query(0, ge=-2, le=2),
+    ai: bool = Query(False, description="Use AI-enhanced processing (SAM, YOLOv8, LaMa)"),
+    grass: bool = Query(False, description="Enhance grass (vibrant green)"),
+    signs: bool = Query(False, description="Remove signs (requires ai=true for best results)"),
 ):
     """
     Main processing endpoint - matches Vercel frontend API.
 
     - **HDR mode**: Upload 2-9 bracketed exposures, merges with Mertens fusion
     - **Twilight mode**: Upload 1 daytime photo, converts to dusk
+    - **AI mode**: Use SAM + YOLOv8 + LaMa for 90% AutoHDR quality
 
     Supports all RAW formats: ARW, CR2, NEF, DNG, etc.
     """
@@ -411,26 +425,48 @@ async def process_images(
                 raise HTTPException(400, f"Failed to read {upload.filename}: {str(e)}")
 
         # ==========================================
-        # STEP 2: Process
+        # STEP 2: Merge brackets (if multiple images)
         # ==========================================
-        settings = ProcessingSettings(
-            brightness=brightness,
-            contrast=contrast,
-            vibrance=vibrance,
-            white_balance=whiteBalance,
-        )
-
-        if mode == "twilight":
-            print("   Applying twilight effect...")
-            settings.twilight_style = "pink"
-            processor = AutoHDRProcessor(settings)
-            result = processor.process(image_arrays[0])
-        else:
+        if len(image_arrays) > 1:
             print(f"   Merging {len(image_arrays)} brackets with Mertens fusion...")
-            merged = merge_brackets_mertens(image_arrays)
-            print(f"   Applying HDR processing...")
+            base_image = merge_brackets_mertens(image_arrays)
+        else:
+            base_image = image_arrays[0]
+
+        # ==========================================
+        # STEP 3: Process (Basic or AI-Enhanced)
+        # ==========================================
+        if ai and HAS_AI_PROCESSOR:
+            print("   🤖 Using AI-enhanced processing (SAM + YOLOv8 + LaMa)...")
+            ai_settings = AIProcessingSettings(
+                brightness=brightness,
+                contrast=contrast,
+                vibrance=vibrance,
+                white_balance=whiteBalance,
+                twilight_style="pink" if mode == "twilight" else None,
+                grass_enhancement=grass,
+                sign_removal=signs,
+                use_ai_segmentation=True,
+                use_ai_detection=True,
+                use_ai_inpainting=signs,  # Only use LaMa if removing signs
+            )
+            processor = AIEnhancedProcessor(ai_settings)
+            result = processor.process(base_image)
+        else:
+            if ai and not HAS_AI_PROCESSOR:
+                print("   ⚠️ AI processor not available, using basic processing")
+            print("   Applying HDR processing...")
+            settings = ProcessingSettings(
+                brightness=brightness,
+                contrast=contrast,
+                vibrance=vibrance,
+                white_balance=whiteBalance,
+                twilight_style="pink" if mode == "twilight" else None,
+                grass_replacement=grass,
+                sign_removal=signs,
+            )
             processor = AutoHDRProcessor(settings)
-            result = processor.process(merged)
+            result = processor.process(base_image)
 
         # ==========================================
         # STEP 3: Encode and return
