@@ -2,8 +2,8 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'AutoHDR Clone - AI Real Estate Photo Editing',
-  description: 'Open-source HDR blending, sky replacement, day-to-dusk conversion',
+  title: 'HDR it - AI Real Estate Photo Editing',
+  description: 'Professional HDR blending, sky replacement, day-to-dusk conversion for real estate photography',
 }
 
 export default function RootLayout({

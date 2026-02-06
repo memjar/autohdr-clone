@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v1.2.0'
+const APP_VERSION = 'v1.3.0'
 
 // RAW file extensions (browsers can't display these)
 const RAW_EXTENSIONS = [
@@ -199,7 +199,7 @@ export default function Home() {
       <nav className="flex justify-between items-center mb-8">
         <div className="flex items-center gap-2">
           <span className="text-2xl">📸</span>
-          <span className="font-bold text-xl">AutoHDR Clone</span>
+          <span className="font-bold text-xl">HDR it</span>
         </div>
         <div className="flex items-center gap-4">
           <a
@@ -225,9 +225,9 @@ export default function Home() {
 
       {/* Header */}
       <div className="text-center mb-12">
-        <h1 className="text-4xl font-bold mb-2">AutoHDR Clone</h1>
-        <p className="text-gray-400">Open-source AI real estate photo editing • 95%+ AutoHDR quality</p>
-        <p className="text-cyan-400 text-sm mt-2">Pro Processor v3.1 • Mertens Fusion • Full RAW Support</p>
+        <h1 className="text-4xl font-bold mb-2">HDR it</h1>
+        <p className="text-gray-400">AI-powered real estate photo editing • Professional quality</p>
+        <p className="text-cyan-400 text-sm mt-2">Pro Processor v4.7.0 • Mertens Fusion • Full RAW Support</p>
       </div>
 
       {/* Backend Toggle */}
@@ -241,7 +241,7 @@ export default function Home() {
                 : 'bg-gray-800 text-gray-500 border border-gray-700'
             }`}
           >
-            {useLocalBackend ? '🟢 Pro Processor v3.1 (RAW support)' : '☁️ Cloud API (JPG/PNG only)'}
+            {useLocalBackend ? '🟢 Pro Processor v4.7.0 (RAW support)' : '☁️ Cloud API (JPG/PNG only)'}
           </button>
           {useLocalBackend && (
             <button
@@ -607,9 +607,9 @@ export default function Home() {
 
       {/* Footer */}
       <footer className="mt-16 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
-        <p>Open source • <a href="https://github.com/memjar/autohdr-clone" className="text-blue-400 hover:underline">GitHub</a></p>
+        <p>HDR it • <a href="https://github.com/memjar/autohdr-clone" className="text-blue-400 hover:underline">GitHub</a></p>
         <p className="mt-2 text-xs text-gray-600">
-          {APP_VERSION} • Backend: {useLocalBackend ? '🟢 localhost:8000' : '☁️ Vercel API'}
+          {APP_VERSION} • Backend: {useLocalBackend ? '🟢 Pro Processor v4.7.0' : '☁️ Cloud API'}
         </p>
       </footer>
     </main>
