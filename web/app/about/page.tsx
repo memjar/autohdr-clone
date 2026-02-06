@@ -2,23 +2,34 @@
 
 export default function About() {
   return (
-    <main className="min-h-screen p-8 max-w-4xl mx-auto">
+    <main className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
+      {/* Animated background elements */}
+      <div className="fixed inset-0 overflow-hidden pointer-events-none">
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+      </div>
+
+      <div className="relative z-10 p-8 max-w-4xl mx-auto">
       {/* Navigation */}
-      <nav className="flex justify-between items-center mb-8">
-        <a href="/" className="flex items-center gap-2">
-          <span className="text-2xl">📸</span>
-          <span className="font-bold text-xl">HDR it</span>
+      <nav className="flex justify-between items-center mb-12">
+        <a href="/" className="flex items-center gap-3 group">
+          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:shadow-cyan-500/40 transition-all">
+            <span className="text-xl">⚡</span>
+          </div>
+          <span className="font-bold text-2xl bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
+            HDRit
+          </span>
         </a>
-        <div className="flex items-center gap-4">
-          <a href="/pricing" className="text-gray-400 hover:text-cyan-400 transition">
+        <div className="flex items-center gap-6">
+          <a href="/pricing" className="text-gray-400 hover:text-white transition font-medium">
             Pricing
           </a>
-          <a href="/dashboard" className="text-gray-400 hover:text-cyan-400 transition">
+          <a href="/dashboard" className="text-gray-400 hover:text-white transition font-medium">
             Dashboard
           </a>
           <a
             href="/dashboard"
-            className="px-4 py-2 bg-cyan-400 text-black font-semibold rounded-lg hover:bg-cyan-300 transition"
+            className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:from-cyan-400 hover:to-blue-400 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
           >
             Sign In
           </a>
@@ -27,7 +38,7 @@ export default function About() {
 
       {/* Hero */}
       <div className="text-center mb-16">
-        <h1 className="text-5xl font-bold mb-4">About HDR it</h1>
+        <h1 className="text-5xl font-bold mb-4">About HDRit</h1>
         <p className="text-xl text-gray-400">
           Born from friendship, fueled by frustration, built for photographers.
         </p>
@@ -64,7 +75,7 @@ export default function About() {
             <p>
               <strong className="text-white">Austin</strong>, the photographer of the trio with an eye sharper than
               a Phase One sensor, knew exactly what "good" looked like—because he'd spent years achieving it
-              the hard way. Every slider, every parameter, every subtle shadow lift in HDR it? That's Austin's
+              the hard way. Every slider, every parameter, every subtle shadow lift in HDRit? That's Austin's
               obsessive attention to detail, distilled into code. He's the reason your photos don't look like
               they were edited by a robot having an existential crisis.
             </p>
@@ -92,7 +103,7 @@ export default function About() {
             </p>
 
             <p>
-              HDR it exists to give photographers their time back. To make professional-grade HDR editing
+              HDRit exists to give photographers their time back. To make professional-grade HDR editing
               accessible to everyone—from the solo agent shooting their own listings to the high-volume
               production houses processing hundreds of properties a week.
             </p>
@@ -172,20 +183,20 @@ export default function About() {
 
       {/* CTA */}
       <section className="text-center mb-16">
-        <h2 className="text-2xl font-bold mb-4">Ready to HDR it?</h2>
+        <h2 className="text-2xl font-bold mb-4 bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">Ready to HDRit?</h2>
         <p className="text-gray-400 mb-6">
           Join thousands of photographers who've already made the switch.
         </p>
         <div className="flex justify-center gap-4">
           <a
             href="/"
-            className="px-6 py-3 bg-cyan-400 text-black font-semibold rounded-lg hover:bg-cyan-300 transition"
+            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:from-cyan-400 hover:to-blue-400 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
           >
             Try It Free
           </a>
           <a
             href="/pricing"
-            className="px-6 py-3 bg-gray-800 text-white font-semibold rounded-lg hover:bg-gray-700 transition border border-gray-700"
+            className="px-6 py-3 bg-gray-800/50 text-white font-semibold rounded-xl hover:bg-gray-800 transition border border-gray-700"
           >
             View Pricing
           </a>
@@ -193,12 +204,13 @@ export default function About() {
       </section>
 
       {/* Footer */}
-      <footer className="pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
-        <p>HDR it • Built with obsession in mind</p>
+      <footer className="mt-12 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
+        <p>HDRit • Made by <a href="https://linky.my" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a></p>
         <p className="mt-2 text-xs text-gray-600">
-          © 2026 HDR it. All rights reserved.
+          © 2026 HDRit. All rights reserved.
         </p>
       </footer>
+      </div>
     </main>
   )
 }

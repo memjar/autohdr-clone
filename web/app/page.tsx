@@ -3,7 +3,10 @@
 import { useState, useCallback, useRef } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.0.0'
+const APP_VERSION = 'v2.0.1'
+
+// Backend URL from environment variable or default
+const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
 
 // RAW file extensions (browsers can't display these)
 const RAW_EXTENSIONS = [
@@ -33,7 +36,7 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
   const [useLocalBackend, setUseLocalBackend] = useState(true)
-  const [backendUrl, setBackendUrl] = useState('http://192.168.1.147:8000')
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL)
   const [showBackendSettings, setShowBackendSettings] = useState(false)
 
   // Adjustment sliders state
@@ -523,7 +526,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-20 pt-8 border-t border-gray-800 text-center">
           <p className="text-gray-400">
-            HDRit • Made by <a href="https://linky.my" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a>
+            HDRit • Made by <a href="https://linky.my" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a>
           </p>
           <p className="mt-2 text-xs text-gray-600">
             {APP_VERSION} • Pro Processor v4.7.0
