@@ -178,7 +178,7 @@ export default function Home() {
               <span className="text-xl">⚡</span>
             </div>
             <span className="font-bold text-2xl bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-              HDR it
+              HDRit
             </span>
           </a>
           <div className="flex items-center gap-6">
@@ -207,7 +207,7 @@ export default function Home() {
             AI-Powered Processing
           </div>
           <h1 className="text-6xl font-bold mb-4 bg-gradient-to-r from-white via-gray-100 to-gray-300 bg-clip-text text-transparent">
-            HDR it
+            HDRit
           </h1>
           <p className="text-xl text-gray-400 mb-2">
             Professional real estate photo editing in seconds
@@ -523,7 +523,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-20 pt-8 border-t border-gray-800 text-center">
           <p className="text-gray-400">
-            HDR it • <a href="https://github.com/memjar/autohdr-clone" className="text-cyan-400 hover:text-cyan-300 transition">GitHub</a>
+            HDRit • Made by <a href="https://linky.my" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a>
           </p>
           <p className="mt-2 text-xs text-gray-600">
             {APP_VERSION} • Pro Processor v4.7.0

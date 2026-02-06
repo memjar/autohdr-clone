@@ -1,5 +1,5 @@
 /**
- * AutoHDR Clone - Type Definitions
+ * HDRit - Type Definitions
  * Database schema types for subscription management
  */
 

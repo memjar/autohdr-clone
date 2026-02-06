@@ -5,7 +5,7 @@ export const runtime = 'nodejs'
 export const maxDuration = 60
 
 /**
- * AutoHDR Clone - Image Processing API
+ * HDRit - Image Processing API
  *
  * Implements HDR-like processing pipeline:
  * 1. HDR Tone Mapping (shadow boost + highlight compression)
