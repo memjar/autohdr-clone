@@ -33,6 +33,8 @@ export default function Home() {
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
   const [useLocalBackend, setUseLocalBackend] = useState(true) // Default to local for RAW support
+  const [backendUrl, setBackendUrl] = useState('http://192.168.1.147:8000') // Mac Studio Pro Processor
+  const [showBackendSettings, setShowBackendSettings] = useState(false)
 
   // Adjustment sliders state
   const [brightness, setBrightness] = useState(0)
@@ -125,10 +127,10 @@ export default function Home() {
       })
 
       // Determine API URL
-      // Local backend: http://localhost:8000/process (RAW support)
-      // Vercel API: /api/process (no RAW support)
+      // Local backend: Mac Studio Pro Processor v3.1 (RAW support, 95%+ quality)
+      // Vercel API: /api/process (basic Sharp processing, no RAW)
       const apiUrl = useLocalBackend
-        ? `http://localhost:8000/process?${params}`
+        ? `${backendUrl}/process?${params}`
         : `/api/process?${params}`
 
       // Call the processing API
@@ -229,17 +231,53 @@ export default function Home() {
       </div>
 
       {/* Backend Toggle */}
-      <div className="flex justify-center mb-4">
-        <button
-          onClick={() => setUseLocalBackend(!useLocalBackend)}
-          className={`text-xs px-3 py-1 rounded-full transition ${
-            useLocalBackend
-              ? 'bg-green-600/20 text-green-400 border border-green-600'
-              : 'bg-gray-800 text-gray-500 border border-gray-700'
-          }`}
-        >
-          {useLocalBackend ? '🟢 Local Backend (RAW support)' : '☁️ Cloud API (JPG/PNG only)'}
-        </button>
+      <div className="flex flex-col items-center gap-2 mb-4">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setUseLocalBackend(!useLocalBackend)}
+            className={`text-xs px-3 py-1 rounded-full transition ${
+              useLocalBackend
+                ? 'bg-green-600/20 text-green-400 border border-green-600'
+                : 'bg-gray-800 text-gray-500 border border-gray-700'
+            }`}
+          >
+            {useLocalBackend ? '🟢 Pro Processor v3.1 (RAW support)' : '☁️ Cloud API (JPG/PNG only)'}
+          </button>
+          {useLocalBackend && (
+            <button
+              onClick={() => setShowBackendSettings(!showBackendSettings)}
+              className="text-xs px-2 py-1 text-gray-400 hover:text-cyan-400 transition"
+            >
+              ⚙️
+            </button>
+          )}
+        </div>
+        {useLocalBackend && showBackendSettings && (
+          <div className="flex items-center gap-2 bg-gray-900 rounded-lg px-3 py-2">
+            <span className="text-xs text-gray-400">Backend URL:</span>
+            <input
+              type="text"
+              value={backendUrl}
+              onChange={(e) => setBackendUrl(e.target.value)}
+              placeholder="http://192.168.1.147:8000"
+              className="text-xs bg-gray-800 border border-gray-700 rounded px-2 py-1 w-48 text-white focus:border-cyan-400 outline-none"
+            />
+            <button
+              onClick={async () => {
+                try {
+                  const res = await fetch(`${backendUrl}/health`)
+                  const data = await res.json()
+                  alert(`✓ Connected!\nProcessor: Pro v${data.components?.pro_processor?.version || '?'}\nQuality: ${data.quality_level}`)
+                } catch (e) {
+                  alert('✗ Cannot connect to backend. Check the URL and ensure the server is running.')
+                }
+              }}
+              className="text-xs px-2 py-1 bg-cyan-400 text-black rounded hover:bg-cyan-300 transition"
+            >
+              Test
+            </button>
+          </div>
+        )}
       </div>
 
       {/* Mode Toggle */}
