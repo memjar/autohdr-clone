@@ -724,22 +724,27 @@ async def process_images(
                     )
             else:
                 # Standard bracket processing (2-5 images = single scene)
-                print(f"   🎯 Using Pro Processor v{PRO_VERSION} for {len(image_arrays)} brackets...")
+                print(f"   🔥 Using Pro Processor v{PRO_VERSION} for {len(image_arrays)} brackets...")
                 result = pro_processor.process_brackets(image_arrays)
 
                 # Encode and return directly - Pro processor handles everything
-                result_bytes = image_to_bytes(result, ".jpg", quality=98)
+                result_bytes = image_to_bytes(result, ".jpg", quality=95)
                 elapsed_ms = (time.time() - start_time) * 1000
                 print(f"   ✓ Pro Processor complete in {elapsed_ms:.0f}ms")
+                print(f"   📦 Response size: {len(result_bytes) / 1024:.1f} KB")
 
                 return Response(
                     content=result_bytes,
                     media_type="image/jpeg",
                     headers={
                         "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
+                        "Content-Length": str(len(result_bytes)),
                         "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
                         "X-Images-Processed": str(len(images)),
                         "X-Processor": f"Pro v{PRO_VERSION}",
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "Content-Length, X-Processing-Time-Ms, X-Processor",
+                        "Cache-Control": "no-cache",
                     }
                 )
 
