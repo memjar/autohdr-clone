@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.0.1'
+const APP_VERSION = 'v2.0.2'
 
 // Backend URL from environment variable or default
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
@@ -50,6 +50,20 @@ export default function Home() {
   const [isDragging, setIsDragging] = useState(false)
   const compareRef = useRef<HTMLDivElement>(null)
 
+  // Progress tracking
+  const [progress, setProgress] = useState(0)
+  const [progressStatus, setProgressStatus] = useState('')
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup progress interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [])
+
   const SUPPORTED_EXTENSIONS = [
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
     '.tiff', '.tif', '.heic', '.heif',
@@ -84,6 +98,28 @@ export default function Home() {
     setResultUrl(null)
     setOriginalUrl(null)
     setError(null)
+    setProgress(0)
+    setProgressStatus('Uploading images...')
+
+    // Start progress simulation
+    const stages = [
+      { pct: 10, msg: 'Uploading images...' },
+      { pct: 25, msg: 'Reading RAW files...' },
+      { pct: 40, msg: 'Aligning brackets...' },
+      { pct: 55, msg: 'Merging exposures...' },
+      { pct: 70, msg: 'Applying tone mapping...' },
+      { pct: 85, msg: 'Color grading...' },
+      { pct: 95, msg: 'Finalizing...' },
+    ]
+    let stageIndex = 0
+
+    progressInterval.current = setInterval(() => {
+      if (stageIndex < stages.length) {
+        setProgress(stages[stageIndex].pct)
+        setProgressStatus(stages[stageIndex].msg)
+        stageIndex++
+      }
+    }, 2000)
 
     try {
       const originalFile = files[Math.floor(files.length / 2)]
@@ -108,10 +144,17 @@ export default function Home() {
         ? `${backendUrl}/process?${params}`
         : `/api/process?${params}`
 
+      // Create abort controller for timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+
       const response = await fetch(apiUrl, {
         method: 'POST',
         body: formData,
+        signal: controller.signal,
       })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -119,14 +162,32 @@ export default function Home() {
       }
 
       const blob = await response.blob()
+
+      // Validate we got an image back
+      if (blob.size < 1000) {
+        throw new Error('Received invalid response from server')
+      }
+
       const url = URL.createObjectURL(blob)
 
+      setProgress(100)
+      setProgressStatus('Complete!')
       setResultUrl(url)
       setResult('Processing complete!')
     } catch (err: any) {
       console.error('Processing error:', err)
-      setError(err.message || 'Processing failed')
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Check if the backend is running and accessible.')
+      } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Cannot connect to backend. Click the gear icon to check the Engine URL.')
+      } else {
+        setError(err.message || 'Processing failed')
+      }
     } finally {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+        progressInterval.current = null
+      }
       setProcessing(false)
     }
   }
@@ -152,6 +213,8 @@ export default function Home() {
     setVibrance(0)
     setWhiteBalance(0)
     setComparePosition(50)
+    setProgress(0)
+    setProgressStatus('')
   }
 
   const handleCompareMouseDown = () => setIsDragging(true)
@@ -438,6 +501,22 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Processing Progress Bar */}
+            {processing && (
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-cyan-400 font-medium">{progressStatus}</span>
+                  <span className="text-gray-400">{progress}%</span>
+                </div>
+                <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               onClick={processImages}
               disabled={processing || (mode === 'hdr' && files.length < 2)}
@@ -468,12 +547,31 @@ export default function Home() {
         {/* Error */}
         {error && (
           <div className="mt-8 p-6 bg-red-900/20 border border-red-500/30 rounded-xl">
-            <p className="text-red-400 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <p className="text-red-400 flex items-center gap-2 mb-3">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {error}
             </p>
+            {(error.includes('connect') || error.includes('timeout') || error.includes('Engine URL')) && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowBackendSettings(true)}
+                  className="px-4 py-2 bg-red-500/20 text-red-400 text-sm rounded-lg hover:bg-red-500/30 transition font-medium"
+                >
+                  Check Backend Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setError(null)
+                    setProgress(0)
+                  }}
+                  className="px-4 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg hover:bg-gray-600 transition font-medium"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
           </div>
         )}
 
