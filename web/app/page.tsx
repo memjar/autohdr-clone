@@ -1,9 +1,9 @@
 'use client'
 
-import { useState, useCallback } from 'react'
+import { useState, useCallback, useRef } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v1.1.0'
+const APP_VERSION = 'v1.2.0'
 
 // RAW file extensions (browsers can't display these)
 const RAW_EXTENSIONS = [
@@ -29,9 +29,21 @@ export default function Home() {
   const [processing, setProcessing] = useState(false)
   const [result, setResult] = useState<string | null>(null)
   const [resultUrl, setResultUrl] = useState<string | null>(null)
+  const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
   const [useLocalBackend, setUseLocalBackend] = useState(true) // Default to local for RAW support
+
+  // Adjustment sliders state
+  const [brightness, setBrightness] = useState(0)
+  const [contrast, setContrast] = useState(0)
+  const [vibrance, setVibrance] = useState(0)
+  const [whiteBalance, setWhiteBalance] = useState(0)
+
+  // Before/after comparison
+  const [comparePosition, setComparePosition] = useState(50)
+  const [isDragging, setIsDragging] = useState(false)
+  const compareRef = useRef<HTMLDivElement>(null)
 
   // All supported file extensions for photographers/realtors
   const SUPPORTED_EXTENSIONS = [
@@ -87,21 +99,37 @@ export default function Home() {
     setProcessing(true)
     setResult(null)
     setResultUrl(null)
+    setOriginalUrl(null)
     setError(null)
 
     try {
+      // Store original for comparison (use first file or middle exposure)
+      const originalFile = files[Math.floor(files.length / 2)]
+      if (originalFile.type.startsWith('image/') && !isRawFile(originalFile.name)) {
+        setOriginalUrl(URL.createObjectURL(originalFile))
+      }
+
       // Create FormData with all images
       const formData = new FormData()
       files.forEach((file) => {
         formData.append('images', file)
       })
 
+      // Build query params with adjustments
+      const params = new URLSearchParams({
+        mode,
+        brightness: brightness.toString(),
+        contrast: contrast.toString(),
+        vibrance: vibrance.toString(),
+        white_balance: whiteBalance.toString(),
+      })
+
       // Determine API URL
       // Local backend: http://localhost:8000/process (RAW support)
       // Vercel API: /api/process (no RAW support)
       const apiUrl = useLocalBackend
-        ? `http://localhost:8000/process?mode=${mode}`
-        : `/api/process?mode=${mode}`
+        ? `http://localhost:8000/process?${params}`
+        : `/api/process?${params}`
 
       // Call the processing API
       const response = await fetch(apiUrl, {
@@ -142,7 +170,25 @@ export default function Home() {
     setFiles([])
     setResult(null)
     setResultUrl(null)
+    setOriginalUrl(null)
     setError(null)
+    setBrightness(0)
+    setContrast(0)
+    setVibrance(0)
+    setWhiteBalance(0)
+    setComparePosition(50)
+  }
+
+  // Handle comparison slider drag
+  const handleCompareMouseDown = () => setIsDragging(true)
+  const handleCompareMouseUp = () => setIsDragging(false)
+  const handleCompareMove = (e: React.MouseEvent | React.TouchEvent) => {
+    if (!isDragging || !compareRef.current) return
+    const rect = compareRef.current.getBoundingClientRect()
+    const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX
+    const x = clientX - rect.left
+    const percent = Math.max(0, Math.min(100, (x / rect.width) * 100))
+    setComparePosition(percent)
   }
 
   return (
@@ -275,6 +321,86 @@ export default function Home() {
             ))}
           </div>
 
+          {/* Adjustment Sliders */}
+          <div className="bg-gray-800/50 rounded-lg p-4 mb-6">
+            <h3 className="text-sm font-semibold text-gray-300 mb-4">Adjustments</h3>
+            <div className="grid grid-cols-2 gap-4">
+              {/* Brightness */}
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>Brightness</span>
+                  <span>{brightness > 0 ? '+' : ''}{brightness.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-2"
+                  max="2"
+                  step="0.1"
+                  value={brightness}
+                  onChange={(e) => setBrightness(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider-thumb"
+                />
+              </div>
+              {/* Contrast */}
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>Contrast</span>
+                  <span>{contrast > 0 ? '+' : ''}{contrast.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-2"
+                  max="2"
+                  step="0.1"
+                  value={contrast}
+                  onChange={(e) => setContrast(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider-thumb"
+                />
+              </div>
+              {/* Vibrance */}
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>Vibrance</span>
+                  <span>{vibrance > 0 ? '+' : ''}{vibrance.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-2"
+                  max="2"
+                  step="0.1"
+                  value={vibrance}
+                  onChange={(e) => setVibrance(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider-thumb"
+                />
+              </div>
+              {/* White Balance */}
+              <div>
+                <div className="flex justify-between text-xs text-gray-400 mb-1">
+                  <span>White Balance</span>
+                  <span>{whiteBalance > 0 ? '+' : ''}{whiteBalance.toFixed(1)}</span>
+                </div>
+                <input
+                  type="range"
+                  min="-2"
+                  max="2"
+                  step="0.1"
+                  value={whiteBalance}
+                  onChange={(e) => setWhiteBalance(parseFloat(e.target.value))}
+                  className="w-full h-2 bg-gray-700 rounded-lg appearance-none cursor-pointer slider-thumb"
+                />
+              </div>
+            </div>
+            {/* Reset button */}
+            {(brightness !== 0 || contrast !== 0 || vibrance !== 0 || whiteBalance !== 0) && (
+              <button
+                onClick={() => { setBrightness(0); setContrast(0); setVibrance(0); setWhiteBalance(0); }}
+                className="mt-3 text-xs text-gray-500 hover:text-gray-300 transition"
+              >
+                Reset adjustments
+              </button>
+            )}
+          </div>
+
           <button
             onClick={processImages}
             disabled={processing || (mode === 'hdr' && files.length < 2)}
@@ -317,14 +443,68 @@ export default function Home() {
             </button>
           </div>
 
-          {/* Preview */}
-          <div className="rounded-xl overflow-hidden bg-gray-800 mb-4">
-            <img
-              src={resultUrl}
-              alt="Processed result"
-              className="w-full h-auto"
-            />
-          </div>
+          {/* Before/After Comparison */}
+          {originalUrl ? (
+            <div
+              ref={compareRef}
+              className="relative rounded-xl overflow-hidden bg-gray-800 mb-4 cursor-ew-resize select-none"
+              onMouseMove={handleCompareMove}
+              onMouseUp={handleCompareMouseUp}
+              onMouseLeave={handleCompareMouseUp}
+              onTouchMove={handleCompareMove}
+              onTouchEnd={handleCompareMouseUp}
+            >
+              {/* After (processed) - full width */}
+              <img
+                src={resultUrl}
+                alt="Processed result"
+                className="w-full h-auto"
+                draggable={false}
+              />
+              {/* Before (original) - clipped */}
+              <div
+                className="absolute inset-0 overflow-hidden"
+                style={{ width: `${comparePosition}%` }}
+              >
+                <img
+                  src={originalUrl}
+                  alt="Original"
+                  className="w-full h-auto"
+                  style={{ width: `${100 / (comparePosition / 100)}%`, maxWidth: 'none' }}
+                  draggable={false}
+                />
+              </div>
+              {/* Slider handle */}
+              <div
+                className="absolute top-0 bottom-0 w-1 bg-white cursor-ew-resize"
+                style={{ left: `${comparePosition}%`, transform: 'translateX(-50%)' }}
+                onMouseDown={handleCompareMouseDown}
+                onTouchStart={handleCompareMouseDown}
+              >
+                <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-8 h-8 bg-white rounded-full shadow-lg flex items-center justify-center">
+                  <svg className="w-4 h-4 text-gray-800" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 9l4-4 4 4m0 6l-4 4-4-4" />
+                  </svg>
+                </div>
+              </div>
+              {/* Labels */}
+              <div className="absolute top-2 left-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+                Before
+              </div>
+              <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 rounded text-xs text-white">
+                After
+              </div>
+            </div>
+          ) : (
+            /* Simple preview when no original available */
+            <div className="rounded-xl overflow-hidden bg-gray-800 mb-4">
+              <img
+                src={resultUrl}
+                alt="Processed result"
+                className="w-full h-auto"
+              />
+            </div>
+          )}
 
           {/* Download Button */}
           <button
