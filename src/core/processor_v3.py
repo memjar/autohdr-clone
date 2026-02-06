@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "3.3.0"  # Added auto dodge/burn + 7-zone luminosity system
+PROCESSOR_VERSION = "3.4.0"  # Added print-quality upscaling (300 DPI)
 
 
 # ============================================================================
@@ -93,6 +93,12 @@ class ProSettings:
     local_contrast: float = 0.35   # Clarity/detail
     shadow_recovery: float = 0.4   # Shadow lift
     highlight_protection: float = 0.35  # Highlight compression
+
+    # === OUTPUT & UPSCALING ===
+    output_dpi: int = 72           # Default screen DPI
+    upscale_for_print: bool = False  # Upscale to 300 DPI for print
+    upscale_method: Literal['lanczos', 'cubic', 'super_res'] = 'lanczos'
+    target_megapixels: Optional[float] = None  # Target MP (e.g., 24.0 for 24MP)
 
     # === NEW: Brightness Distribution ===
     brightness_equalization: bool = True   # Even out brightness across image
@@ -237,6 +243,10 @@ class AutoHDRProProcessor:
         # ====== STAGE 11: TWILIGHT ======
         if self.settings.twilight:
             result = self._apply_twilight(result, self.settings.twilight)
+
+        # ====== STAGE 12: UPSCALING FOR PRINT ======
+        if self.settings.upscale_for_print:
+            result = self._upscale_for_print(result)
 
         return result
 
@@ -1528,6 +1538,62 @@ class AutoHDRProProcessor:
     def _declutter(self, image: np.ndarray) -> np.ndarray:
         """Subtle smoothing to reduce visual clutter."""
         return cv2.bilateralFilter(image, 9, 55, 55)
+
+    def _upscale_for_print(self, image: np.ndarray) -> np.ndarray:
+        """
+        Upscale image to print quality (300 DPI).
+
+        AutoHDR offers print-quality upscaling for professional materials.
+        This uses high-quality interpolation to increase resolution while
+        maintaining sharpness and detail.
+
+        Methods:
+        - lanczos: Best for photographic content (default)
+        - cubic: Good balance of speed and quality
+        - super_res: AI-enhanced (requires additional model, falls back to lanczos)
+        """
+        if not self.settings.upscale_for_print:
+            return image
+
+        h, w = image.shape[:2]
+        current_pixels = h * w
+
+        # Calculate scale factor
+        if self.settings.target_megapixels:
+            # Scale to target megapixels
+            target_pixels = self.settings.target_megapixels * 1_000_000
+            scale = np.sqrt(target_pixels / current_pixels)
+        else:
+            # Scale based on DPI ratio (72 DPI to 300 DPI = 4.17x)
+            scale = 300 / max(self.settings.output_dpi, 72)
+
+        if scale <= 1.0:
+            return image  # Already at or above target
+
+        # Calculate new dimensions
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+
+        # Select interpolation method
+        method = self.settings.upscale_method
+
+        if method == 'lanczos':
+            # Lanczos interpolation - best for photos
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        elif method == 'cubic':
+            # Bicubic interpolation - faster, still good
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        else:
+            # Default to lanczos (super_res would require ML model)
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+
+        # Apply subtle sharpening to compensate for upscaling softness
+        if scale > 1.5:
+            # Unsharp mask for large upscales
+            blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
+            result = cv2.addWeighted(result, 1.3, blurred, -0.3, 0)
+
+        return result
 
     def _denoise_image(self, image: np.ndarray) -> np.ndarray:
         """
