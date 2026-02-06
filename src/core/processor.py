@@ -1,9 +1,19 @@
 """
-AutoHDR Clone - Core Image Processor
-====================================
+AutoHDR Clone - Core Image Processor v2
+=======================================
 
-Implements the full AutoHDR processing pipeline:
-1. HDR Tone Mapping (core effect)
+Enhanced HDR processing with LAB color space for professional quality.
+
+Improvements over v1:
+- LAB color space for luminance manipulation (no color shifts)
+- Multi-scale local contrast (clarity at fine/medium/coarse frequencies)
+- Smooth highlight rolloff (filmic, no hard clipping)
+- Adaptive shadow recovery with noise prevention
+- Midtone contrast enhancement (S-curve)
+- Edge-aware detail enhancement
+
+Full Pipeline:
+1. HDR Tone Mapping (LAB-based)
 2. Brightness/Contrast/Vibrance/White Balance
 3. Perspective Correction
 4. Sky Enhancement
@@ -17,14 +27,14 @@ Usage:
     result = processor.process(image)
 """
 
-# Version tracking for quality iterations
-PROCESSOR_VERSION = "v36"
-
 import cv2
 import numpy as np
 from dataclasses import dataclass, field
 from typing import Optional, Literal
 from pathlib import Path
+
+# Processor version
+PROCESSOR_VERSION = "2.1.0"  # Added edge-aware halo prevention + pro window pull
 
 
 @dataclass
@@ -85,7 +95,8 @@ class AutoHDRProcessor:
         # ==========================================
         # STAGE 1: HDR TONE MAPPING (CORE EFFECT)
         # ==========================================
-        result = self.apply_hdr_effect(result, strength=0.7)
+        # Reduced from 0.7 to 0.5 for more natural results
+        result = self.apply_hdr_effect(result, strength=0.5)
 
         # ==========================================
         # STAGE 2-5: ADJUSTMENTS
@@ -149,140 +160,284 @@ class AutoHDRProcessor:
     # CORE EFFECTS
     # ==========================================
 
-    def apply_hdr_effect(self, image: np.ndarray, strength: float = 0.7) -> np.ndarray:
+    def apply_hdr_effect(
+        self,
+        image: np.ndarray,
+        strength: float = 0.5,           # Reduced from 0.7 for natural look
+        shadow_recovery: float = 0.35,   # Reduced from 0.4
+        highlight_compression: float = 0.25,  # Reduced from 0.3
+        local_contrast: float = 0.25,    # Reduced from 0.35 (prevents halos)
+        midtone_contrast: float = 0.10   # Reduced from 0.15
+    ) -> np.ndarray:
         """
-        HDR Tone Mapping - Real Estate Style (v35)
-        CLEAN AND SIMPLE - no spatial masks, no filters, just natural processing.
+        Advanced HDR tone mapping using LAB color space.
+
+        LAB separates luminance from color, preventing color shifts
+        that occur when processing RGB directly.
+
+        Args:
+            image: Input BGR uint8 image
+            strength: Overall effect strength (0-1)
+            shadow_recovery: How much to lift shadows (0-1)
+            highlight_compression: How much to compress highlights (0-1)
+            local_contrast: Clarity/local contrast amount (0-1)
+            midtone_contrast: Midtone punch (0-1)
+
+        Returns:
+            Processed BGR uint8 image
         """
-        img_float = image.astype(np.float32) / 255.0
+        # Convert to LAB color space (better for luminance manipulation)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L, A, B = cv2.split(lab)
 
-        # ==========================================
-        # STEP 1: NEUTRAL WHITE BALANCE
-        # ==========================================
-        luminance = np.mean(img_float, axis=2)
-        max_ch = np.max(img_float, axis=2)
-        min_ch = np.min(img_float, axis=2)
-        saturation = (max_ch - min_ch) / (max_ch + 0.001)
+        # Normalize L channel to 0-1
+        L_norm = L / 255.0
 
-        # Find white surfaces
-        white_mask = (luminance > 0.70) & (saturation < 0.10)
+        # STEP 1: Adaptive shadow recovery
+        L_norm = self._adaptive_shadow_recovery(L_norm, shadow_recovery * strength)
 
-        if white_mask.sum() > 500:
-            r_avg = np.mean(img_float[:,:,2][white_mask])
-            g_avg = np.mean(img_float[:,:,1][white_mask])
-            b_avg = np.mean(img_float[:,:,0][white_mask])
+        # STEP 2: Highlight compression with smooth rolloff
+        L_norm = self._highlight_rolloff(L_norm, highlight_compression * strength)
 
-            # Normalize to make whites neutral
-            target = (r_avg + g_avg + b_avg) / 3
-            if r_avg > 0.01 and g_avg > 0.01 and b_avg > 0.01:
-                img_float[:,:,2] *= target / r_avg
-                img_float[:,:,1] *= target / g_avg
-                img_float[:,:,0] *= target / b_avg
+        # STEP 3: Multi-scale local contrast (the "HDR look")
+        L_norm = self._multiscale_local_contrast(L_norm, local_contrast * strength)
 
-        img_float = np.clip(img_float, 0, 1)
+        # STEP 4: Midtone contrast (S-curve for punch)
+        L_norm = self._midtone_contrast(L_norm, midtone_contrast * strength)
 
-        # ==========================================
-        # STEP 2: BRIGHTNESS LIFT (uniform, no spatial masks)
-        # ==========================================
-        # Stronger gamma for brighter output
-        img_float = np.power(img_float, 0.88)  # Brighter lift
+        # STEP 5: Edge-aware detail enhancement
+        L_norm = self._edge_aware_sharpen(L_norm, strength=0.1 * strength)
 
-        # ==========================================
-        # STEP 3: LIGHT DENOISING
-        # ==========================================
-        result_uint8 = np.clip(img_float * 255, 0, 255).astype(np.uint8)
-        result_uint8 = cv2.fastNlMeansDenoisingColored(result_uint8, None, 5, 5, 7, 21)
+        # Convert back
+        L_out = np.clip(L_norm * 255, 0, 255).astype(np.float32)
 
-        # ==========================================
-        # STEP 4: SELECTIVE COLOR (no spatial masks)
-        # ==========================================
-        hsv = cv2.cvtColor(result_uint8, cv2.COLOR_BGR2HSV).astype(np.float32)
+        # Minimal saturation adjustment (too much looks unnatural)
+        # Reduced from 0.05 to 0.02 for more natural colors
+        A = A + (A - 128) * 0.02 * strength
+        B = B + (B - 128) * 0.02 * strength
 
-        # Blue baffles: boost saturation
-        blue_mask = (hsv[:,:,0] > 100) & (hsv[:,:,0] < 130) & (hsv[:,:,1] > 50)
-        hsv[:,:,1][blue_mask] = np.clip(hsv[:,:,1][blue_mask] * 1.15, 0, 255)
-
-        # Green plants: boost saturation
-        green_mask = (hsv[:,:,0] > 35) & (hsv[:,:,0] < 85) & (hsv[:,:,1] > 40)
-        hsv[:,:,1][green_mask] = np.clip(hsv[:,:,1][green_mask] * 1.15, 0, 255)
-
-        # Wood desks: slight warmth
-        wood_mask = (hsv[:,:,0] > 12) & (hsv[:,:,0] < 38) & (hsv[:,:,1] > 30)
-        hsv[:,:,1][wood_mask] = np.clip(hsv[:,:,1][wood_mask] * 1.10, 0, 255)
-
-        result_uint8 = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-
-        return result_uint8
-
-    def _local_contrast(self, img_float: np.ndarray, strength: float = 0.3) -> np.ndarray:
-        """Apply local contrast enhancement (clarity)"""
-        # Create blurred version
-        blurred = cv2.GaussianBlur(img_float, (0, 0), 30)
-
-        # High-pass = original - blurred
-        high_pass = img_float - blurred
-
-        # Add back with strength
-        result = img_float + high_pass * strength
+        lab_out = cv2.merge([L_out, A, B])
+        result = cv2.cvtColor(lab_out.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
         return result
 
+    def _adaptive_shadow_recovery(self, L: np.ndarray, amount: float) -> np.ndarray:
+        """
+        Lift shadows adaptively - darker areas get more boost.
+        Uses soft knee curve to prevent noise amplification in very dark areas.
+        """
+        if amount <= 0:
+            return L
+
+        # Shadow mask: darker pixels get higher weight
+        shadow_weight = np.power(1.0 - L, 2.5)
+
+        # Soft knee: limit boost in very dark areas (prevents noise)
+        soft_knee = np.where(L < 0.1, L / 0.1, 1.0)
+        shadow_weight = shadow_weight * soft_knee
+
+        # Apply shadow lift
+        lift = shadow_weight * amount * 0.5
+        result = L + lift
+
+        return np.clip(result, 0, 1)
+
+    def _highlight_rolloff(self, L: np.ndarray, amount: float) -> np.ndarray:
+        """
+        Compress highlights with smooth filmic rolloff (no hard clipping).
+        """
+        if amount <= 0:
+            return L
+
+        # Filmic highlight rolloff
+        threshold = 0.7  # Start compression above this
+        mask = L > threshold
+
+        if not mask.any():
+            return L
+
+        result = L.copy()
+
+        # Soft compression above threshold
+        over = (L[mask] - threshold) / (1 - threshold)  # 0-1 range above threshold
+
+        # Filmic curve: x / (x + 1) style compression
+        compressed = over / (1 + over * amount * 2)
+
+        # Map back to original range
+        result[mask] = threshold + compressed * (1 - threshold) * (1 - amount * 0.3)
+
+        return result
+
+    def _multiscale_local_contrast(self, L: np.ndarray, amount: float) -> np.ndarray:
+        """
+        Edge-aware multi-scale local contrast enhancement (clarity).
+        Combines fine, medium, and coarse detail at different frequencies.
+        REDUCES contrast near edges to prevent halos.
+        """
+        if amount <= 0:
+            return L
+
+        # ==========================================
+        # EDGE DETECTION FOR HALO PREVENTION
+        # ==========================================
+        # Detect edges where halos typically form
+        L_uint8 = (L * 255).astype(np.uint8)
+        edges = cv2.Canny(L_uint8, 30, 100)
+
+        # Dilate edges to create protection zone
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
+        edge_zone = cv2.dilate(edges, kernel, iterations=2)
+
+        # Smooth the edge mask for gradual falloff
+        edge_mask = cv2.GaussianBlur(edge_zone.astype(np.float32), (21, 21), 0) / 255.0
+
+        # Edge protection: reduce local contrast strength near edges
+        # 1.0 = full strength (no edges), 0.3 = reduced strength (near edges)
+        edge_protection = 1.0 - (edge_mask * 0.7)
+
+        # ==========================================
+        # MULTI-SCALE LOCAL CONTRAST
+        # ==========================================
+        # Fine detail (small radius) - texture (less affected by halos)
+        fine = self._unsharp_mask(L, sigma=5, amount=amount * 0.25)
+
+        # Medium detail (medium radius) - local structure
+        medium = self._unsharp_mask(L, sigma=15, amount=amount * 0.4)
+
+        # Coarse detail (large radius) - the "HDR look" (most prone to halos)
+        # Apply edge protection mainly to coarse detail
+        coarse_raw = self._unsharp_mask(L, sigma=40, amount=amount * 0.5)
+        coarse = L + (coarse_raw - L) * edge_protection
+
+        # Combine with reduced weights for more natural look
+        result = L + (fine - L) * 0.25 + (medium - L) * 0.35 + (coarse - L) * 0.25
+
+        return np.clip(result, 0, 1)
+
+    def _unsharp_mask(self, img: np.ndarray, sigma: float, amount: float) -> np.ndarray:
+        """Apply unsharp mask for local contrast at specified scale."""
+        blurred = cv2.GaussianBlur(img, (0, 0), sigma)
+        high_pass = img - blurred
+        return img + high_pass * amount
+
+    def _midtone_contrast(self, L: np.ndarray, amount: float) -> np.ndarray:
+        """
+        S-curve for midtone contrast enhancement.
+        Adds "punch" to midtones without affecting shadows/highlights.
+        """
+        if amount <= 0:
+            return L
+
+        # S-curve using tanh - center around 0.5
+        centered = L - 0.5
+
+        # Tanh-based S-curve with adjustable strength
+        curve_strength = 1.0 + amount * 3
+        curved = np.tanh(centered * curve_strength) / np.tanh(0.5 * curve_strength)
+
+        # Map back and blend with original
+        result = 0.5 + curved * 0.5
+
+        return L * (1 - amount) + result * amount
+
+    def _edge_aware_sharpen(self, L: np.ndarray, strength: float = 0.1) -> np.ndarray:
+        """
+        Edge-aware sharpening that doesn't create halos.
+        Uses bilateral filter to preserve edges.
+        """
+        if strength <= 0:
+            return L
+
+        # Bilateral preserves edges while smoothing
+        L_uint8 = (L * 255).astype(np.uint8)
+        smoothed = cv2.bilateralFilter(L_uint8, 9, 75, 75).astype(np.float32) / 255
+
+        # High-pass = original - smoothed
+        high_pass = L - smoothed
+
+        # Add back with strength (edge-aware because bilateral preserved edges)
+        result = L + high_pass * strength
+
+        return np.clip(result, 0, 1)
+
     # ==========================================
-    # ADJUSTMENTS
+    # ADJUSTMENTS (LAB-based for quality)
     # ==========================================
 
     def adjust_brightness(self, image: np.ndarray, value: float) -> np.ndarray:
         """
-        Brightness adjustment.
-        value: -2 to +2 scale
+        Brightness adjustment in LAB space.
+        Adjusts luminance only, preserving color integrity.
+
+        Args:
+            value: -2 to +2 scale
         """
-        adjusted = image.astype(np.float32)
-        # Scale value to pixel range (±50 pixels for full range)
-        adjusted += (value / 2.0) * 50
-        return np.clip(adjusted, 0, 255).astype(np.uint8)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        # Scale value to L range (±25 for full range)
+        lab[:, :, 0] += (value / 2.0) * 25
+        lab[:, :, 0] = np.clip(lab[:, :, 0], 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def adjust_contrast(self, image: np.ndarray, value: float) -> np.ndarray:
         """
-        Contrast adjustment.
-        value: -2 to +2 scale
-        Formula: output = (input - 128) * factor + 128
+        Contrast adjustment in LAB space.
+        Adjusts luminance contrast only, preventing color shifts.
+
+        Args:
+            value: -2 to +2 scale
         """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
         factor = 1.0 + (value / 4.0)
-        adjusted = image.astype(np.float32)
-        adjusted = (adjusted - 128) * factor + 128
-        return np.clip(adjusted, 0, 255).astype(np.uint8)
+        L = (L - 128) * factor + 128
+        lab[:, :, 0] = np.clip(L, 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def adjust_vibrance(self, image: np.ndarray, value: float) -> np.ndarray:
         """
-        Vibrance adjustment - boosts saturation intelligently.
-        value: -2 to +2 scale
+        Vibrance adjustment in LAB space.
+        Boosts less-saturated colors more than already-saturated ones.
+        More natural than simple saturation boost.
+
+        Args:
+            value: -2 to +2 scale
         """
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
 
-        # Boost saturation, but less for already-saturated colors
-        saturation = hsv[:, :, 1]
-        # Lower saturation pixels get bigger boost
-        boost_factor = 1.0 + (value / 10.0) * (1.0 - saturation / 255.0)
-        hsv[:, :, 1] = saturation * boost_factor
-        hsv[:, :, 1] = np.clip(hsv[:, :, 1], 0, 255)
+        # A and B channels represent color
+        A, B = lab[:, :, 1], lab[:, :, 2]
 
-        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+        # Current saturation (distance from neutral gray)
+        sat = np.sqrt((A - 128) ** 2 + (B - 128) ** 2)
+        max_sat = np.max(sat) + 1e-6
+
+        # Vibrance: boost less-saturated colors more
+        boost = 1.0 + (value / 10.0) * (1.0 - sat / max_sat)
+
+        lab[:, :, 1] = 128 + (A - 128) * boost
+        lab[:, :, 2] = 128 + (B - 128) * boost
+
+        lab = np.clip(lab, 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def adjust_white_balance(self, image: np.ndarray, value: float) -> np.ndarray:
         """
-        White balance adjustment.
-        value: -2 (cooler/blue) to +2 (warmer/orange)
+        White balance adjustment in LAB space.
+        Adjusts B channel for warmth (more accurate than RGB).
+
+        Args:
+            value: -2 (cooler/blue) to +2 (warmer/yellow)
         """
-        adjusted = image.astype(np.float32)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
 
-        if value > 0:  # Warmer
-            adjusted[:, :, 2] *= (1.0 + value * 0.12)  # Red boost
-            adjusted[:, :, 0] *= (1.0 - value * 0.06)  # Blue reduce
-        else:  # Cooler
-            adjusted[:, :, 0] *= (1.0 - value * 0.12)  # Blue boost
-            adjusted[:, :, 2] *= (1.0 + value * 0.06)  # Red reduce
+        # B channel: negative = blue, positive = yellow
+        # Warmer = more yellow (increase B)
+        # Cooler = more blue (decrease B)
+        lab[:, :, 2] += value * 10  # Subtle shift
 
-        return np.clip(adjusted, 0, 255).astype(np.uint8)
+        lab = np.clip(lab, 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     # ==========================================
     # GEOMETRIC CORRECTIONS
@@ -386,43 +541,141 @@ class AutoHDRProcessor:
 
     def enhance_windows(self, image: np.ndarray, intensity: str = 'natural') -> np.ndarray:
         """
-        Window pull - brighten window areas for balanced interior/exterior.
-        """
-        intensity_map = {'natural': 1.15, 'medium': 1.3, 'strong': 1.5}
-        factor = intensity_map.get(intensity, 1.15)
+        Professional Window Pull using luminosity masking.
 
-        # Detect potential window regions (bright rectangles)
+        This is THE key technique that separates amateur from pro real estate photos.
+        Balances interior exposure with exterior view through windows using
+        luminosity-based blending with feathered edges.
+
+        Args:
+            image: Input BGR image
+            intensity: 'natural' (subtle), 'medium', or 'strong'
+        """
+        # Intensity controls how much we pull down the windows
+        intensity_map = {'natural': 0.4, 'medium': 0.6, 'strong': 0.8}
+        pull_strength = intensity_map.get(intensity, 0.4)
+
+        h, w = image.shape[:2]
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
-        # Adaptive threshold to find bright regions
-        _, bright = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        # ==========================================
+        # STEP 1: DETECT WINDOW REGIONS
+        # ==========================================
+        # Windows are typically bright, rectangular regions
 
-        # Find contours
+        # Multi-threshold detection for various window brightnesses
+        _, very_bright = cv2.threshold(gray, 240, 255, cv2.THRESH_BINARY)
+        _, bright = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        _, medium_bright = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
+
+        # Combine with weights (very bright areas are more likely windows)
+        window_likelihood = (very_bright.astype(np.float32) * 1.0 +
+                            bright.astype(np.float32) * 0.5 +
+                            medium_bright.astype(np.float32) * 0.2) / 1.7
+
+        # Find contours to identify rectangular regions
         contours, _ = cv2.findContours(bright, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-        window_mask = np.zeros_like(gray)
+        window_mask = np.zeros((h, w), dtype=np.float32)
         for contour in contours:
-            x, y, w, h = cv2.boundingRect(contour)
-            area = w * h
-            aspect = w / max(h, 1)
+            x, y, cw, ch = cv2.boundingRect(contour)
+            area = cw * ch
+            aspect = cw / max(ch, 1)
+            img_area = h * w
 
-            # Window-like: rectangular, reasonable size
-            if area > 500 and 0.3 < aspect < 3.0:
-                cv2.rectangle(window_mask, (x, y), (x + w, y + h), 255, -1)
+            # Window characteristics:
+            # - Rectangular (aspect 0.3 to 3.0)
+            # - Reasonable size (not tiny specks, not huge)
+            # - Contains bright pixels
+            min_area = img_area * 0.001  # At least 0.1% of image
+            max_area = img_area * 0.3    # At most 30% of image
 
-        if window_mask.sum() == 0:
+            if min_area < area < max_area and 0.2 < aspect < 5.0:
+                # Check if region is actually bright (window-like)
+                region_brightness = np.mean(gray[y:y+ch, x:x+cw])
+                if region_brightness > 170:
+                    # Create soft rectangular mask
+                    cv2.rectangle(window_mask, (x, y), (x + cw, y + ch), 1.0, -1)
+
+        if window_mask.sum() < 100:
             return image
 
-        # Apply selective darkening to window regions (reveal exterior)
-        mask_float = window_mask.astype(np.float32) / 255.0
-        mask_float = cv2.GaussianBlur(mask_float, (21, 21), 0)
+        # ==========================================
+        # STEP 2: CREATE LUMINOSITY MASK
+        # ==========================================
+        # Luminosity mask: bright areas = 1, dark areas = 0
+        luminosity = gray.astype(np.float32) / 255.0
 
-        adjusted = image.astype(np.float32)
-        # Reduce brightness in overexposed windows to reveal detail
-        for i in range(3):
-            adjusted[:, :, i] = adjusted[:, :, i] * (1 - mask_float * (1 - 1/factor))
+        # Only affect the bright parts within window regions
+        # This preserves window frames and interior elements
+        window_luminosity_mask = window_mask * luminosity
 
-        return np.clip(adjusted, 0, 255).astype(np.uint8)
+        # ==========================================
+        # STEP 3: FEATHER THE EDGES
+        # ==========================================
+        # Critical for natural blending - no hard edges
+        # Use larger blur for softer transition
+        feather_size = max(15, int(min(h, w) * 0.02))  # 2% of image size
+        if feather_size % 2 == 0:
+            feather_size += 1
+
+        feathered_mask = cv2.GaussianBlur(window_luminosity_mask, (feather_size, feather_size), 0)
+
+        # Boost the mask contrast slightly for more defined windows
+        feathered_mask = np.clip(feathered_mask * 1.3, 0, 1)
+
+        # ==========================================
+        # STEP 4: APPLY WINDOW PULL (LUMINOSITY BLEND)
+        # ==========================================
+        # Convert to LAB for luminosity-only adjustment
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Calculate target luminosity for windows
+        # Pull bright windows down toward a natural level (~180 in L channel)
+        target_L = 180
+
+        # Blend: reduce L in bright window areas
+        # The brighter the pixel, the more we pull it down
+        pull_amount = (L - target_L) * feathered_mask * pull_strength
+        L_adjusted = L - pull_amount
+
+        # ==========================================
+        # STEP 5: RECOVER EXTERIOR DETAIL
+        # ==========================================
+        # For very bright (blown out) areas, add subtle detail recovery
+        blown_out = (L > 245).astype(np.float32)
+        blown_out = cv2.GaussianBlur(blown_out, (5, 5), 0) * feathered_mask
+
+        # Add subtle texture/detail to blown areas
+        # This simulates recovering exterior view
+        local_variance = cv2.Laplacian(gray, cv2.CV_32F)
+        local_variance = np.abs(local_variance)
+        local_variance = cv2.GaussianBlur(local_variance, (5, 5), 0)
+        detail_boost = local_variance * blown_out * 0.3
+
+        L_adjusted = L_adjusted - detail_boost
+
+        # ==========================================
+        # STEP 6: PRESERVE COLOR INTEGRITY
+        # ==========================================
+        # Slight saturation boost in window areas to counter the darkening
+        A = lab[:, :, 1]
+        B = lab[:, :, 2]
+
+        # Boost color slightly in pulled areas
+        color_boost = 1.0 + feathered_mask * 0.1
+        A = 128 + (A - 128) * color_boost
+        B = 128 + (B - 128) * color_boost
+
+        # Reconstruct
+        lab[:, :, 0] = np.clip(L_adjusted, 0, 255)
+        lab[:, :, 1] = np.clip(A, 0, 255)
+        lab[:, :, 2] = np.clip(B, 0, 255)
+
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+        return result
 
     def enhance_grass(self, image: np.ndarray) -> np.ndarray:
         """Make grass more vibrant green."""
@@ -481,35 +734,97 @@ class AutoHDRProcessor:
     # ==========================================
 
     def apply_twilight(self, image: np.ndarray, style: str = 'pink') -> np.ndarray:
-        """Apply day-to-dusk twilight effect."""
-        adjusted = image.astype(np.float32)
+        """
+        Apply realistic day-to-dusk twilight effect.
 
+        Features:
+        - Sky gradient from horizon warmth to upper cool
+        - Window glow simulation (interior lights)
+        - Overall dusk color grading
+        - Subtle vignette for atmosphere
+
+        Args:
+            style: 'pink' (warm sunset), 'blue' (cool dusk), 'orange' (golden hour)
+        """
+        h, w = image.shape[:2]
+        result = image.astype(np.float32)
+
+        # Detect sky region for gradient
+        sky_mask = self._detect_sky(image).astype(np.float32) / 255.0
+
+        # Create vertical gradient (warmer at horizon, cooler up top)
+        gradient = np.linspace(0.3, 1.0, h).reshape(-1, 1)
+        gradient = np.tile(gradient, (1, w))
+
+        # Style-specific color grading
         if style == 'pink':
-            adjusted[:, :, 2] *= 1.25  # Red boost
-            adjusted[:, :, 1] *= 1.05  # Green slight
-            adjusted[:, :, 0] *= 0.75  # Blue reduce
+            # Warm pink/magenta sunset
+            sky_tint = np.zeros((h, w, 3), dtype=np.float32)
+            sky_tint[:, :, 2] = 40 * gradient * sky_mask  # Red
+            sky_tint[:, :, 1] = 10 * gradient * sky_mask  # Green
+            sky_tint[:, :, 0] = -20 * gradient * sky_mask  # Blue (reduce)
+
+            # Global color shift
+            result[:, :, 2] *= 1.15  # Red boost
+            result[:, :, 1] *= 1.02  # Green slight
+            result[:, :, 0] *= 0.82  # Blue reduce
+
         elif style == 'blue':
-            adjusted[:, :, 0] *= 1.15  # Blue boost
-            adjusted[:, :, 2] *= 0.85  # Red reduce
+            # Cool blue hour
+            sky_tint = np.zeros((h, w, 3), dtype=np.float32)
+            sky_tint[:, :, 0] = 30 * (1 - gradient) * sky_mask  # Blue
+            sky_tint[:, :, 2] = -15 * (1 - gradient) * sky_mask  # Red reduce
+
+            result[:, :, 0] *= 1.12  # Blue boost
+            result[:, :, 2] *= 0.88  # Red reduce
+
         elif style == 'orange':
-            adjusted[:, :, 2] *= 1.35  # Red boost
-            adjusted[:, :, 1] *= 1.1   # Green
-            adjusted[:, :, 0] *= 0.65  # Blue reduce
+            # Golden hour warmth
+            sky_tint = np.zeros((h, w, 3), dtype=np.float32)
+            sky_tint[:, :, 2] = 50 * gradient * sky_mask  # Red
+            sky_tint[:, :, 1] = 25 * gradient * sky_mask  # Green
+            sky_tint[:, :, 0] = -30 * gradient * sky_mask  # Blue reduce
 
-        # Darken slightly for dusk effect
-        adjusted *= 0.92
+            result[:, :, 2] *= 1.25  # Red boost
+            result[:, :, 1] *= 1.08  # Green
+            result[:, :, 0] *= 0.70  # Blue reduce
+        else:
+            sky_tint = np.zeros((h, w, 3), dtype=np.float32)
 
-        # Add warm glow to bright areas (simulates interior lights)
+        # Apply sky tint
+        result += sky_tint
+
+        # Darken for dusk (use LAB to preserve colors)
+        lab = cv2.cvtColor(np.clip(result, 0, 255).astype(np.uint8), cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 0] *= 0.88  # Reduce luminance
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR).astype(np.float32)
+
+        # Window glow - detect bright areas and add warm glow
         gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-        _, bright = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
-        bright_float = bright.astype(np.float32) / 255.0
-        bright_float = cv2.GaussianBlur(bright_float, (31, 31), 0)
+        _, bright = cv2.threshold(gray, 180, 255, cv2.THRESH_BINARY)
 
-        # Add warm glow
-        adjusted[:, :, 2] += bright_float * 30  # Red
-        adjusted[:, :, 1] += bright_float * 20  # Green
+        # Expand bright areas to create glow
+        kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (15, 15))
+        glow_mask = cv2.dilate(bright, kernel, iterations=2)
+        glow_mask = cv2.GaussianBlur(glow_mask.astype(np.float32), (41, 41), 0) / 255.0
 
-        return np.clip(adjusted, 0, 255).astype(np.uint8)
+        # Warm glow color
+        result[:, :, 2] += glow_mask * 45  # Red
+        result[:, :, 1] += glow_mask * 30  # Green
+        result[:, :, 0] += glow_mask * 5   # Slight blue
+
+        # Subtle vignette for atmosphere
+        Y, X = np.ogrid[:h, :w]
+        center_y, center_x = h / 2, w / 2
+        dist = np.sqrt((X - center_x) ** 2 + (Y - center_y) ** 2)
+        max_dist = np.sqrt(center_x ** 2 + center_y ** 2)
+        vignette = 1 - (dist / max_dist) * 0.25
+        vignette = vignette.astype(np.float32)
+
+        for i in range(3):
+            result[:, :, i] *= vignette
+
+        return np.clip(result, 0, 255).astype(np.uint8)
 
 
 # ==========================================
