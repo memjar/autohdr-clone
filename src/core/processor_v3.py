@@ -38,7 +38,66 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "3.1.0"  # Added brightness equalization, CLAHE, zone adjustments
+PROCESSOR_VERSION = "4.1.0"  # Added S-curve + multi-level luminosity masks (Kuyper)
+
+
+# ============================================================================
+# SCENARIO ANALYSIS (AutoHDR's Secret: Specialized Processing Per Scenario)
+# ============================================================================
+
+@dataclass
+class ZoneAnalysis:
+    """Analysis of a single image zone (grid cell)"""
+    x: int
+    y: int
+    width: int
+    height: int
+    avg_brightness: float
+    color_temp: float  # Estimated Kelvin
+    is_window: bool
+    is_sky: bool
+    is_interior: bool
+    saturation: float
+
+
+@dataclass
+class ScenarioAnalysis:
+    """Complete scenario analysis for adaptive processing"""
+    # Detected scenarios
+    scenarios: List[str]
+    intensity: str  # 'natural' or 'intense'
+
+    # Lighting analysis
+    is_mixed_lighting: bool
+    color_temp_variance: float
+    dominant_color_temp: float
+    has_tungsten: bool  # Warm indoor lighting
+    has_daylight: bool  # Cool outdoor lighting
+
+    # Dynamic range
+    dynamic_range: float
+    needs_shadow_lift: bool
+    needs_highlight_compression: bool
+    is_high_contrast: bool
+
+    # Zone data
+    zones: List[ZoneAnalysis]
+    interior_zones: List[int]  # Indices of interior zones
+    exterior_zones: List[int]  # Indices of exterior/window zones
+
+    # Content detection
+    has_windows: bool
+    has_sky: bool
+    has_grass: bool
+    window_percentage: float
+    sky_percentage: float
+
+    # Adaptive parameters (computed based on analysis)
+    adaptive_wb_strength: float
+    adaptive_shadow_lift: float
+    adaptive_highlight_compress: float
+    adaptive_saturation_boost: float
+    adaptive_contrast: float
 
 
 # ============================================================================
@@ -94,6 +153,12 @@ class ProSettings:
     shadow_recovery: float = 0.4   # Shadow lift
     highlight_protection: float = 0.35  # Highlight compression
 
+    # === OUTPUT & UPSCALING ===
+    output_dpi: int = 72           # Default screen DPI
+    upscale_for_print: bool = False  # Upscale to 300 DPI for print
+    upscale_method: Literal['lanczos', 'cubic', 'super_res'] = 'lanczos'
+    target_megapixels: Optional[float] = None  # Target MP (e.g., 24.0 for 24MP)
+
     # === NEW: Brightness Distribution ===
     brightness_equalization: bool = True   # Even out brightness across image
     equalization_strength: float = 0.5     # How aggressive (0-1)
@@ -110,6 +175,32 @@ class ProSettings:
 
     # Advanced white balance
     wb_method: Literal['gray_world', 'white_patch', 'combined'] = 'combined'
+
+    # === DENOISING (for clean, grain-free output) ===
+    denoise: bool = True
+    denoise_strength: float = 0.5          # 0-1, higher = more smoothing
+    denoise_preserve_detail: bool = True   # Use edge-aware denoising
+
+    # === ADVANCED: Dodge & Burn (from Lightroom research) ===
+    auto_dodge_burn: bool = True           # Auto even out room lighting
+    dodge_shadows: float = 0.3             # Lift dark areas (0-1)
+    burn_highlights: float = 0.15          # Control bright spots (0-1)
+
+    # === ADVANCED: 7-Zone Luminosity System (Kuyper extended) ===
+    use_7_zone_system: bool = False        # Advanced zone control
+    zone_blacks: float = 0.0               # Zone 1-2 (L < 25)
+    zone_deep_shadows: float = 0.0         # Zone 2-3 (L 25-50)
+    # zone_shadows already defined          # Zone 3-4 (L 50-100)
+    # zone_midtones already defined         # Zone 5 (L 100-155)
+    zone_bright_midtones: float = 0.0      # Zone 6 (L 155-200)
+    # zone_highlights already defined       # Zone 7-8 (L 200-235)
+    zone_whites: float = 0.0               # Zone 9 (L > 235)
+
+    # === MULTI-SCENARIO ARCHITECTURE (AutoHDR's Secret Sauce) ===
+    use_adaptive_processing: bool = True   # Enable scenario detection & adaptive params
+    zone_grid_size: int = 4                # 4x4 grid for zone analysis
+    adaptive_wb: bool = True               # Zone-aware white balance
+    mixed_lighting_threshold: float = 500  # Color temp variance for mixed lighting
 
 
 # ============================================================================
@@ -128,6 +219,261 @@ class AutoHDRProProcessor:
 
     def __init__(self, settings: Optional[ProSettings] = None):
         self.settings = settings or ProSettings()
+        self._scenario_analysis: Optional[ScenarioAnalysis] = None
+
+    # ========================================================================
+    # MULTI-SCENARIO DETECTION & ANALYSIS (AutoHDR's Architecture)
+    # ========================================================================
+
+    def _analyze_scenario(self, image: np.ndarray) -> ScenarioAnalysis:
+        """
+        Comprehensive scenario analysis - THE key to AutoHDR's success.
+
+        Analyzes the image to determine:
+        1. What type of scene (interior/exterior/mixed)
+        2. Lighting conditions (mixed tungsten/daylight)
+        3. Dynamic range requirements
+        4. Content (windows, sky, grass)
+        5. Optimal processing parameters
+
+        This enables ADAPTIVE processing instead of one-size-fits-all.
+        """
+        h, w = image.shape[:2]
+        grid_size = self.settings.zone_grid_size
+
+        # ====== STEP 1: DIVIDE INTO ZONES ======
+        zones = self._analyze_zones(image, grid_size)
+
+        # ====== STEP 2: LIGHTING PROFILE ======
+        color_temps = [z.color_temp for z in zones]
+        color_temp_variance = np.var(color_temps)
+        dominant_color_temp = np.median(color_temps)
+
+        # Detect mixed lighting (high variance = tungsten + daylight)
+        is_mixed_lighting = color_temp_variance > self.settings.mixed_lighting_threshold
+
+        # Tungsten (warm): < 4000K, Daylight (cool): > 5000K
+        has_tungsten = any(z.color_temp < 4000 for z in zones if not z.is_window)
+        has_daylight = any(z.color_temp > 5000 for z in zones)
+
+        # ====== STEP 3: DYNAMIC RANGE ANALYSIS ======
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
+
+        # 5th and 95th percentile for robust range
+        cumsum = np.cumsum(hist)
+        total = cumsum[-1]
+        p5 = np.searchsorted(cumsum, total * 0.05)
+        p95 = np.searchsorted(cumsum, total * 0.95)
+
+        dynamic_range = p95 - p5
+        needs_shadow_lift = p5 < 50
+        needs_highlight_compression = p95 > 220
+        is_high_contrast = dynamic_range > 150
+
+        # ====== STEP 4: CONTENT DETECTION ======
+        interior_zones = [i for i, z in enumerate(zones) if z.is_interior and not z.is_window]
+        exterior_zones = [i for i, z in enumerate(zones) if z.is_window or z.is_sky]
+
+        has_windows = any(z.is_window for z in zones)
+        has_sky = any(z.is_sky for z in zones)
+        has_grass = self._detect_grass_presence(image)
+
+        window_percentage = sum(1 for z in zones if z.is_window) / len(zones)
+        sky_percentage = sum(1 for z in zones if z.is_sky) / len(zones)
+
+        # ====== STEP 5: CLASSIFY SCENARIOS ======
+        scenarios = []
+
+        if is_mixed_lighting and has_windows:
+            scenarios.append('INTERIOR_WITH_WINDOWS')
+        elif not has_windows and not has_sky:
+            scenarios.append('PURE_INTERIOR')
+
+        if has_sky and sky_percentage > 0.2:
+            scenarios.append('LANDSCAPE_EXTERIOR')
+
+        if has_grass:
+            scenarios.append('GRASS_ENHANCEMENT')
+
+        if is_high_contrast:
+            scenarios.append('HIGH_DYNAMIC_RANGE')
+
+        if needs_shadow_lift and needs_highlight_compression:
+            scenarios.append('EXTREME_CONTRAST')
+
+        # Determine intensity based on analysis
+        intensity = 'intense' if is_high_contrast or dynamic_range > 120 else 'natural'
+
+        # ====== STEP 6: COMPUTE ADAPTIVE PARAMETERS ======
+        # These replace fixed settings with image-specific values
+
+        # White balance strength: higher for mixed lighting
+        adaptive_wb_strength = 0.6
+        if is_mixed_lighting:
+            adaptive_wb_strength = 0.85 + (color_temp_variance / 5000) * 0.15
+        adaptive_wb_strength = min(1.0, adaptive_wb_strength)
+
+        # Shadow lift: based on how dark the shadows are
+        adaptive_shadow_lift = 0.3
+        if needs_shadow_lift:
+            adaptive_shadow_lift = 0.4 + (50 - p5) / 100 * 0.2
+        adaptive_shadow_lift = min(0.6, adaptive_shadow_lift)
+
+        # Highlight compression: based on how bright highlights are
+        adaptive_highlight_compress = 0.25
+        if needs_highlight_compression:
+            adaptive_highlight_compress = 0.3 + (p95 - 220) / 35 * 0.15
+        adaptive_highlight_compress = min(0.5, adaptive_highlight_compress)
+
+        # Saturation boost: lower saturation images get more boost
+        avg_saturation = np.mean([z.saturation for z in zones])
+        if avg_saturation < 80:
+            adaptive_saturation_boost = 1.15 + (80 - avg_saturation) / 80 * 0.15
+        else:
+            adaptive_saturation_boost = 1.1
+        adaptive_saturation_boost = min(1.3, adaptive_saturation_boost)
+
+        # Contrast: based on dynamic range
+        if is_high_contrast:
+            adaptive_contrast = 1.0  # Already high, don't add more
+        else:
+            adaptive_contrast = 1.1 + (150 - dynamic_range) / 150 * 0.15
+        adaptive_contrast = min(1.25, adaptive_contrast)
+
+        return ScenarioAnalysis(
+            scenarios=scenarios,
+            intensity=intensity,
+            is_mixed_lighting=is_mixed_lighting,
+            color_temp_variance=color_temp_variance,
+            dominant_color_temp=dominant_color_temp,
+            has_tungsten=has_tungsten,
+            has_daylight=has_daylight,
+            dynamic_range=dynamic_range,
+            needs_shadow_lift=needs_shadow_lift,
+            needs_highlight_compression=needs_highlight_compression,
+            is_high_contrast=is_high_contrast,
+            zones=zones,
+            interior_zones=interior_zones,
+            exterior_zones=exterior_zones,
+            has_windows=has_windows,
+            has_sky=has_sky,
+            has_grass=has_grass,
+            window_percentage=window_percentage,
+            sky_percentage=sky_percentage,
+            adaptive_wb_strength=adaptive_wb_strength,
+            adaptive_shadow_lift=adaptive_shadow_lift,
+            adaptive_highlight_compress=adaptive_highlight_compress,
+            adaptive_saturation_boost=adaptive_saturation_boost,
+            adaptive_contrast=adaptive_contrast
+        )
+
+    def _analyze_zones(self, image: np.ndarray, grid_size: int) -> List[ZoneAnalysis]:
+        """
+        Divide image into zones and analyze each one.
+
+        This enables zone-specific processing:
+        - Different white balance for interior vs exterior
+        - Different tone mapping per zone
+        - Window detection per zone
+        """
+        h, w = image.shape[:2]
+        zone_h = h // grid_size
+        zone_w = w // grid_size
+
+        zones = []
+
+        for gy in range(grid_size):
+            for gx in range(grid_size):
+                y1 = gy * zone_h
+                y2 = (gy + 1) * zone_h if gy < grid_size - 1 else h
+                x1 = gx * zone_w
+                x2 = (gx + 1) * zone_w if gx < grid_size - 1 else w
+
+                region = image[y1:y2, x1:x2]
+
+                # Analyze zone
+                gray = cv2.cvtColor(region, cv2.COLOR_BGR2GRAY)
+                avg_brightness = np.mean(gray)
+
+                # Color temperature estimation (McCamy's formula)
+                color_temp = self._estimate_color_temperature(region)
+
+                # HSV for saturation
+                hsv = cv2.cvtColor(region, cv2.COLOR_BGR2HSV)
+                saturation = np.mean(hsv[:, :, 1])
+
+                # Window detection: very bright region
+                is_window = avg_brightness > 200 and saturation < 60
+
+                # Sky detection: bright, blue-ish, low saturation
+                blue_ratio = np.mean(region[:, :, 0]) / (np.mean(region[:, :, 2]) + 1)
+                is_sky = avg_brightness > 180 and blue_ratio > 1.1 and gy < grid_size // 2
+
+                # Interior: darker, warmer
+                is_interior = avg_brightness < 150 and color_temp < 5000
+
+                zones.append(ZoneAnalysis(
+                    x=x1, y=y1, width=x2-x1, height=y2-y1,
+                    avg_brightness=avg_brightness,
+                    color_temp=color_temp,
+                    is_window=is_window,
+                    is_sky=is_sky,
+                    is_interior=is_interior,
+                    saturation=saturation
+                ))
+
+        return zones
+
+    def _estimate_color_temperature(self, region: np.ndarray) -> float:
+        """
+        Estimate color temperature in Kelvin using McCamy's formula.
+
+        This is critical for detecting mixed lighting scenarios.
+        - Tungsten: ~2700-3200K (warm, orange)
+        - Halogen: ~3000-3500K (warm)
+        - Daylight: ~5500-6500K (cool, blue)
+        - Overcast: ~6500-7500K (cooler)
+        """
+        # Get average RGB
+        avg_b = np.mean(region[:, :, 0])
+        avg_g = np.mean(region[:, :, 1])
+        avg_r = np.mean(region[:, :, 2])
+
+        # Normalize
+        max_channel = max(avg_r, avg_g, avg_b, 1)
+        r = avg_r / max_channel
+        g = avg_g / max_channel
+        b = avg_b / max_channel
+
+        # Prevent division by zero
+        if r + g + b < 0.01:
+            return 5500  # Default daylight
+
+        # Calculate chromaticity coordinates
+        x = (0.4124 * r + 0.3576 * g + 0.1805 * b) / (r + g + b)
+
+        # McCamy's formula for color temperature
+        n = (x - 0.3320) / (0.1858 - x + 0.0001)
+        color_temp = 449 * n**3 + 3525 * n**2 + 6823.3 * n + 5520.33
+
+        # Clamp to reasonable range
+        return max(2000, min(10000, color_temp))
+
+    def _detect_grass_presence(self, image: np.ndarray) -> bool:
+        """Detect if grass/lawn is present (lower portion of image)."""
+        h, w = image.shape[:2]
+        lower_region = image[int(h * 0.6):, :]
+
+        hsv = cv2.cvtColor(lower_region, cv2.COLOR_BGR2HSV)
+
+        # Green detection
+        lower_green = np.array([30, 30, 30])
+        upper_green = np.array([90, 255, 255])
+        green_mask = cv2.inRange(hsv, lower_green, upper_green)
+
+        green_percentage = np.sum(green_mask > 0) / green_mask.size
+        return green_percentage > 0.15
 
     # ========================================================================
     # MAIN PROCESSING PIPELINES
@@ -139,6 +485,14 @@ class AutoHDRProProcessor:
 
         For best results, use process_brackets() with multiple exposures.
         """
+        # ====== STAGE 0: SCENARIO ANALYSIS (AutoHDR's Secret) ======
+        if self.settings.use_adaptive_processing:
+            self._scenario_analysis = self._analyze_scenario(image)
+            # Use detected intensity if auto
+            if self.settings.output_style == 'natural':
+                # Let analysis determine if we need more intensity
+                pass  # Keep user setting
+
         # Auto-detect scene type
         if self.settings.scene_type == 'auto':
             scene = self._detect_scene_type(image)
@@ -152,8 +506,17 @@ class AutoHDRProProcessor:
             result = self._auto_white_balance(result)
 
         # ====== STAGE 2: HDR TONE MAPPING ======
-        # Use output style to determine intensity
-        strength = self.settings.hdr_strength
+        # Use adaptive parameters if available
+        if self._scenario_analysis and self.settings.use_adaptive_processing:
+            strength = self.settings.hdr_strength
+            # Adjust based on dynamic range analysis
+            if self._scenario_analysis.needs_shadow_lift:
+                strength *= 1.1
+            if self._scenario_analysis.is_high_contrast:
+                strength *= 1.15
+        else:
+            strength = self.settings.hdr_strength
+
         if self.settings.output_style == 'intense':
             strength *= 1.4  # More aggressive for intense mode
 
@@ -179,8 +542,15 @@ class AutoHDRProProcessor:
         if self.settings.use_clahe:
             result = self._apply_clahe(result)
 
-        # ====== STAGE 7: LUMINOSITY ZONE ADJUSTMENTS (NEW) ======
-        result = self._apply_zone_adjustments(result)
+        # ====== STAGE 7: AUTO DODGE & BURN (NEW - from Lightroom research) ======
+        if self.settings.auto_dodge_burn:
+            result = self._auto_dodge_burn(result)
+
+        # ====== STAGE 8: LUMINOSITY ZONE ADJUSTMENTS ======
+        if self.settings.use_7_zone_system:
+            result = self._apply_7_zone_adjustments(result)
+        else:
+            result = self._apply_zone_adjustments(result)
 
         # ====== STAGE 8: MANUAL ADJUSTMENTS ======
         result = self._apply_adjustments(result)
@@ -203,9 +573,17 @@ class AutoHDRProProcessor:
         if self.settings.declutter:
             result = self._declutter(result)
 
-        # ====== STAGE 10: TWILIGHT ======
+        # ====== STAGE 10: DENOISING (NEW) ======
+        if self.settings.denoise:
+            result = self._denoise_image(result)
+
+        # ====== STAGE 11: TWILIGHT ======
         if self.settings.twilight:
             result = self._apply_twilight(result, self.settings.twilight)
+
+        # ====== STAGE 12: UPSCALING FOR PRINT ======
+        if self.settings.upscale_for_print:
+            result = self._upscale_for_print(result)
 
         return result
 
@@ -422,11 +800,18 @@ class AutoHDRProProcessor:
         L_norm = L / 255.0
 
         # ====== SHADOW RECOVERY (simulates fill flash) ======
-        shadow_amount = self.settings.shadow_recovery * strength
+        # Use adaptive parameters if available
+        if self._scenario_analysis and self.settings.use_adaptive_processing:
+            shadow_amount = self._scenario_analysis.adaptive_shadow_lift * strength
+        else:
+            shadow_amount = self.settings.shadow_recovery * strength
         L_norm = self._adaptive_shadow_lift(L_norm, shadow_amount)
 
         # ====== HIGHLIGHT PROTECTION ======
-        highlight_amount = self.settings.highlight_protection * strength
+        if self._scenario_analysis and self.settings.use_adaptive_processing:
+            highlight_amount = self._scenario_analysis.adaptive_highlight_compress * strength
+        else:
+            highlight_amount = self.settings.highlight_protection * strength
         L_norm = self._filmic_highlight_rolloff(L_norm, highlight_amount)
 
         # ====== LOCAL CONTRAST (simulates directional lighting) ======
@@ -544,6 +929,121 @@ class AutoHDRProProcessor:
         result = 0.5 + curved * 0.5
 
         return L * (1 - amount) + result * amount
+
+    def _apply_s_curve(self, image: np.ndarray, strength: float = 0.3) -> np.ndarray:
+        """
+        Professional S-Curve contrast enhancement (Lightroom technique).
+
+        The S-curve is THE most common contrast technique:
+        - Control points at 25% and 75% marks
+        - Drag lower point DOWN (darken shadows)
+        - Drag upper point UP (brighten highlights)
+        - Creates visual pop by increasing dynamic range
+
+        Args:
+            strength: 0-1, how aggressive the S-curve is
+        """
+        if strength <= 0:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0] / 255.0  # Normalize to 0-1
+
+        # S-curve: darken shadows at 25%, brighten highlights at 75%
+        # Using cubic Bezier approximation
+
+        # Shadow compression (L < 0.5)
+        shadow_mask = L < 0.5
+        shadow_adjust = np.where(
+            shadow_mask,
+            L - (L * (0.5 - L) * strength * 0.4),  # Darken shadows
+            L
+        )
+
+        # Highlight lift (L > 0.5)
+        highlight_mask = L > 0.5
+        L_adjusted = np.where(
+            highlight_mask,
+            shadow_adjust + ((1 - shadow_adjust) * (shadow_adjust - 0.5) * strength * 0.4),  # Brighten highlights
+            shadow_adjust
+        )
+
+        lab[:, :, 0] = np.clip(L_adjusted * 255, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _create_multilevel_luminosity_masks(self, L: np.ndarray) -> dict:
+        """
+        Create Tony Kuyper's multi-level luminosity masks.
+
+        This is THE professional technique for precision tonal control:
+        - Lights 1, 2, 3 (progressively brighter selections)
+        - Darks 1, 2, 3 (progressively darker selections)
+        - Midtones (intersection of what's not lights or darks)
+
+        Returns dict with all masks for flexible processing.
+        """
+        L_norm = L / 255.0
+
+        masks = {}
+
+        # Lights masks (progressively brighter)
+        masks['lights_1'] = np.clip((L_norm - 0.5) / 0.5, 0, 1)      # L > 128
+        masks['lights_2'] = np.clip((L_norm - 0.75) / 0.25, 0, 1)    # L > 191
+        masks['lights_3'] = np.clip((L_norm - 0.875) / 0.125, 0, 1)  # L > 223
+
+        # Darks masks (progressively darker)
+        masks['darks_1'] = np.clip((0.5 - L_norm) / 0.5, 0, 1)       # L < 128
+        masks['darks_2'] = np.clip((0.25 - L_norm) / 0.25, 0, 1)     # L < 64
+        masks['darks_3'] = np.clip((0.125 - L_norm) / 0.125, 0, 1)   # L < 32
+
+        # Midtones (what's not in lights or darks)
+        masks['midtones'] = 1.0 - masks['lights_1'] - masks['darks_1']
+        masks['midtones'] = np.clip(masks['midtones'], 0, 1)
+
+        return masks
+
+    def _apply_luminosity_adjustments(
+        self,
+        image: np.ndarray,
+        lights_adjust: float = 0.0,
+        darks_adjust: float = 0.0,
+        midtones_adjust: float = 0.0
+    ) -> np.ndarray:
+        """
+        Apply Lightroom-style luminosity adjustments using Kuyper masks.
+
+        This is more sophisticated than simple zone adjustments:
+        - Uses true luminosity masks with smooth transitions
+        - Prevents halos by respecting tonal relationships
+        - Mimics professional dodging/burning workflow
+        """
+        if lights_adjust == 0 and darks_adjust == 0 and midtones_adjust == 0:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Create multi-level masks
+        masks = self._create_multilevel_luminosity_masks(L)
+
+        # Apply adjustments (scale: -1 to +1 maps to -40 to +40 L units)
+        scale = 40
+
+        if lights_adjust != 0:
+            # Use Lights 1 mask for broad highlight control
+            L = L + masks['lights_1'] * lights_adjust * scale
+
+        if darks_adjust != 0:
+            # Use Darks 1 mask for broad shadow control
+            L = L + masks['darks_1'] * darks_adjust * scale
+
+        if midtones_adjust != 0:
+            L = L + masks['midtones'] * midtones_adjust * scale
+
+        lab[:, :, 0] = np.clip(L, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def _boost_contrast_intense(self, image: np.ndarray) -> np.ndarray:
         """
@@ -671,32 +1171,130 @@ class AutoHDRProProcessor:
     def _auto_white_balance(self, image: np.ndarray) -> np.ndarray:
         """
         Automatic white balance correction.
-        Uses gray world assumption with improvements.
+        Uses zone-aware processing for mixed lighting scenarios.
         """
-        # Convert to float
+        # Use zone-aware WB if adaptive processing is enabled and we have analysis
+        if (self.settings.use_adaptive_processing and
+            self.settings.adaptive_wb and
+            self._scenario_analysis is not None and
+            self._scenario_analysis.is_mixed_lighting):
+            return self._zone_aware_white_balance(image)
+
+        # Standard gray world white balance
+        return self._gray_world_white_balance(image)
+
+    def _gray_world_white_balance(self, image: np.ndarray) -> np.ndarray:
+        """Standard gray world white balance."""
         img_float = image.astype(np.float32)
 
-        # Calculate channel averages (gray world assumption)
         avg_b = np.mean(img_float[:, :, 0])
         avg_g = np.mean(img_float[:, :, 1])
         avg_r = np.mean(img_float[:, :, 2])
 
-        # Target: neutral gray
         avg_gray = (avg_b + avg_g + avg_r) / 3
 
-        # Calculate correction factors
-        # Limit correction to prevent extreme shifts
         scale_b = min(max(avg_gray / (avg_b + 1e-6), 0.7), 1.4)
         scale_g = min(max(avg_gray / (avg_g + 1e-6), 0.7), 1.4)
         scale_r = min(max(avg_gray / (avg_r + 1e-6), 0.7), 1.4)
 
-        # Apply correction with reduced strength for stability
+        # Use adaptive strength if available
         strength = 0.6
+        if self._scenario_analysis:
+            strength = self._scenario_analysis.adaptive_wb_strength
+
         img_float[:, :, 0] = img_float[:, :, 0] * (1 + (scale_b - 1) * strength)
         img_float[:, :, 1] = img_float[:, :, 1] * (1 + (scale_g - 1) * strength)
         img_float[:, :, 2] = img_float[:, :, 2] * (1 + (scale_r - 1) * strength)
 
         return np.clip(img_float, 0, 255).astype(np.uint8)
+
+    def _zone_aware_white_balance(self, image: np.ndarray) -> np.ndarray:
+        """
+        Zone-aware white balance for mixed lighting scenarios.
+
+        This is CRITICAL for interior photos with windows:
+        - Interior zones (warm tungsten lighting): Correct toward neutral
+        - Exterior/window zones (cool daylight): Preserve natural color
+        - Blend at boundaries for smooth transitions
+
+        AutoHDR does this automatically - it's why their results look natural.
+        """
+        h, w = image.shape[:2]
+        result = image.astype(np.float32)
+        zones = self._scenario_analysis.zones
+        grid_size = self.settings.zone_grid_size
+
+        # Create correction mask
+        correction_mask = np.zeros((h, w, 3), dtype=np.float32)
+        weight_mask = np.zeros((h, w), dtype=np.float32)
+
+        for zone in zones:
+            # Calculate zone-specific correction
+            region = image[zone.y:zone.y+zone.height, zone.x:zone.x+zone.width]
+
+            # Get zone color averages
+            avg_b = np.mean(region[:, :, 0])
+            avg_g = np.mean(region[:, :, 1])
+            avg_r = np.mean(region[:, :, 2])
+            avg_gray = (avg_b + avg_g + avg_r) / 3
+
+            # Calculate correction factors
+            scale_b = avg_gray / (avg_b + 1e-6)
+            scale_g = avg_gray / (avg_g + 1e-6)
+            scale_r = avg_gray / (avg_r + 1e-6)
+
+            # Clamp corrections
+            scale_b = min(max(scale_b, 0.7), 1.4)
+            scale_g = min(max(scale_g, 0.7), 1.4)
+            scale_r = min(max(scale_r, 0.7), 1.4)
+
+            # Zone-specific strength based on type
+            if zone.is_window or zone.is_sky:
+                # Exterior: preserve natural daylight color
+                zone_strength = 0.3
+            elif zone.is_interior and zone.color_temp < 4000:
+                # Warm interior: stronger correction
+                zone_strength = 0.85
+            else:
+                # Default
+                zone_strength = 0.6
+
+            # Apply correction to zone with feathering
+            y1, y2 = zone.y, zone.y + zone.height
+            x1, x2 = zone.x, zone.x + zone.width
+
+            # Create feathered zone mask
+            zone_mask = np.ones((zone.height, zone.width), dtype=np.float32)
+
+            # Feather edges for smooth blending
+            feather = max(10, min(zone.height, zone.width) // 4)
+            if feather > 0:
+                # Top edge
+                zone_mask[:feather, :] *= np.linspace(0, 1, feather)[:, np.newaxis]
+                # Bottom edge
+                zone_mask[-feather:, :] *= np.linspace(1, 0, feather)[:, np.newaxis]
+                # Left edge
+                zone_mask[:, :feather] *= np.linspace(0, 1, feather)[np.newaxis, :]
+                # Right edge
+                zone_mask[:, -feather:] *= np.linspace(1, 0, feather)[np.newaxis, :]
+
+            # Store corrections
+            correction_mask[y1:y2, x1:x2, 0] += (scale_b - 1) * zone_strength * zone_mask[:, :, np.newaxis].squeeze()
+            correction_mask[y1:y2, x1:x2, 1] += (scale_g - 1) * zone_strength * zone_mask[:, :, np.newaxis].squeeze()
+            correction_mask[y1:y2, x1:x2, 2] += (scale_r - 1) * zone_strength * zone_mask[:, :, np.newaxis].squeeze()
+            weight_mask[y1:y2, x1:x2] += zone_mask
+
+        # Normalize by weight
+        weight_mask = np.maximum(weight_mask, 1e-6)
+        for c in range(3):
+            correction_mask[:, :, c] /= weight_mask
+
+        # Apply correction
+        result[:, :, 0] *= (1 + correction_mask[:, :, 0])
+        result[:, :, 1] *= (1 + correction_mask[:, :, 1])
+        result[:, :, 2] *= (1 + correction_mask[:, :, 2])
+
+        return np.clip(result, 0, 255).astype(np.uint8)
 
     # ========================================================================
     # SKY PROCESSING
@@ -1045,6 +1643,160 @@ class AutoHDRProProcessor:
 
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
+    def _auto_dodge_burn(self, image: np.ndarray) -> np.ndarray:
+        """
+        Automatic dodge & burn for even room lighting.
+
+        Dodge = lighten dark areas (like fill flash)
+        Burn = darken overly bright areas (like exposure control)
+
+        This technique is fundamental to professional interior photography,
+        creating the "well-lit room" look without actual lighting setup.
+        """
+        dodge_strength = self.settings.dodge_shadows
+        burn_strength = self.settings.burn_highlights
+
+        if dodge_strength <= 0 and burn_strength <= 0:
+            return image
+
+        # Convert to LAB for luminance-only processing
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Calculate local brightness map (regional lighting analysis)
+        local_brightness = cv2.GaussianBlur(L, (0, 0), 40)
+
+        # Global statistics
+        global_mean = np.mean(L)
+        target_brightness = max(global_mean, 140)  # Aim for well-lit room
+
+        # ====== DODGE: Lift dark areas ======
+        if dodge_strength > 0:
+            # Identify regions darker than target
+            dark_deviation = target_brightness - local_brightness
+            dark_regions = np.maximum(dark_deviation, 0)
+
+            # Create dodge mask with smooth falloff
+            # More lift for darker areas, less for moderately dark
+            dodge_intensity = np.power(dark_regions / 100, 0.8) * dodge_strength
+
+            # Shadow protection: don't amplify noise in very dark areas
+            shadow_knee = np.clip(L / 25, 0, 1)
+            dodge_intensity *= shadow_knee
+
+            # Apply dodge (lift shadows)
+            dodge_amount = dodge_intensity * 40  # Max ~40 L units lift
+            L = L + dodge_amount
+
+        # ====== BURN: Control bright spots ======
+        if burn_strength > 0:
+            # Identify regions brighter than target
+            bright_deviation = local_brightness - target_brightness
+            bright_regions = np.maximum(bright_deviation, 0)
+
+            # Create burn mask - gentle control, not aggressive
+            burn_intensity = np.power(bright_regions / 80, 0.7) * burn_strength
+
+            # Highlight protection: preserve some brightness
+            highlight_knee = np.clip((255 - L) / 50, 0, 1)
+            burn_intensity *= highlight_knee
+
+            # Apply burn (reduce highlights)
+            burn_amount = burn_intensity * 25  # Max ~25 L units reduction
+            L = L - burn_amount
+
+        lab[:, :, 0] = np.clip(L, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_7_zone_adjustments(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply 7-zone luminosity adjustments (extended Kuyper technique).
+
+        Seven zones for precise control:
+        - Zone 1-2: Blacks (L < 25)
+        - Zone 2-3: Deep Shadows (L 25-50)
+        - Zone 3-4: Shadows (L 50-100)
+        - Zone 5: Midtones (L 100-155)
+        - Zone 6: Bright Midtones (L 155-200)
+        - Zone 7-8: Highlights (L 200-235)
+        - Zone 9: Whites (L > 235)
+
+        This provides much finer control than the basic 3-zone system,
+        allowing professional-level tonal adjustments.
+        """
+        # Check if any adjustments needed
+        has_adjustments = (
+            self.settings.zone_blacks != 0 or
+            self.settings.zone_deep_shadows != 0 or
+            self.settings.zone_shadows != 0 or
+            self.settings.zone_midtones != 0 or
+            self.settings.zone_bright_midtones != 0 or
+            self.settings.zone_highlights != 0 or
+            self.settings.zone_whites != 0
+        )
+
+        if not has_adjustments:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Create masks for each zone using Gaussian falloff
+        # This creates smooth transitions between zones
+
+        # Zone 1-2: Blacks (center=12, width=15)
+        blacks_mask = self._create_zone_mask(L, center=12, width=15)
+
+        # Zone 2-3: Deep Shadows (center=37, width=18)
+        deep_shadows_mask = self._create_zone_mask(L, center=37, width=18)
+
+        # Zone 3-4: Shadows (center=75, width=30)
+        shadows_mask = self._create_zone_mask(L, center=75, width=30)
+
+        # Zone 5: Midtones (center=127, width=35)
+        midtones_mask = self._create_zone_mask(L, center=127, width=35)
+
+        # Zone 6: Bright Midtones (center=177, width=28)
+        bright_mids_mask = self._create_zone_mask(L, center=177, width=28)
+
+        # Zone 7-8: Highlights (center=217, width=22)
+        highlights_mask = self._create_zone_mask(L, center=217, width=22)
+
+        # Zone 9: Whites (center=245, width=12)
+        whites_mask = self._create_zone_mask(L, center=245, width=12)
+
+        # Apply adjustments to each zone
+        # Scale: -1 to +1 maps to -25 to +25 L units
+        scale = 25
+
+        L_adjusted = L.copy()
+
+        if self.settings.zone_blacks != 0:
+            L_adjusted += blacks_mask * self.settings.zone_blacks * scale
+
+        if self.settings.zone_deep_shadows != 0:
+            L_adjusted += deep_shadows_mask * self.settings.zone_deep_shadows * scale
+
+        if self.settings.zone_shadows != 0:
+            L_adjusted += shadows_mask * self.settings.zone_shadows * scale
+
+        if self.settings.zone_midtones != 0:
+            L_adjusted += midtones_mask * self.settings.zone_midtones * scale
+
+        if self.settings.zone_bright_midtones != 0:
+            L_adjusted += bright_mids_mask * self.settings.zone_bright_midtones * scale
+
+        if self.settings.zone_highlights != 0:
+            L_adjusted += highlights_mask * self.settings.zone_highlights * scale
+
+        if self.settings.zone_whites != 0:
+            L_adjusted += whites_mask * self.settings.zone_whites * scale
+
+        lab[:, :, 0] = np.clip(L_adjusted, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
     def _apply_zone_adjustments(self, image: np.ndarray) -> np.ndarray:
         """
         Apply Lightroom-style luminosity zone adjustments.
@@ -1226,7 +1978,13 @@ class AutoHDRProProcessor:
         sat = np.sqrt((A - 128) ** 2 + (B - 128) ** 2)
         max_sat = np.max(sat) + 1e-6
 
-        boost = 1.0 + (value / 8.0) * (1.0 - sat / max_sat)
+        # Use adaptive saturation boost if available
+        if self._scenario_analysis and self.settings.use_adaptive_processing and value == 0:
+            # Apply adaptive boost automatically
+            adaptive_boost = self._scenario_analysis.adaptive_saturation_boost
+            boost = adaptive_boost * (1.0 - sat / max_sat * 0.3)
+        else:
+            boost = 1.0 + (value / 8.0) * (1.0 - sat / max_sat)
 
         lab[:, :, 1] = 128 + (A - 128) * boost
         lab[:, :, 2] = 128 + (B - 128) * boost
@@ -1343,6 +2101,136 @@ class AutoHDRProProcessor:
     def _declutter(self, image: np.ndarray) -> np.ndarray:
         """Subtle smoothing to reduce visual clutter."""
         return cv2.bilateralFilter(image, 9, 55, 55)
+
+    def _upscale_for_print(self, image: np.ndarray) -> np.ndarray:
+        """
+        Upscale image to print quality (300 DPI).
+
+        AutoHDR offers print-quality upscaling for professional materials.
+        This uses high-quality interpolation to increase resolution while
+        maintaining sharpness and detail.
+
+        Methods:
+        - lanczos: Best for photographic content (default)
+        - cubic: Good balance of speed and quality
+        - super_res: AI-enhanced (requires additional model, falls back to lanczos)
+        """
+        if not self.settings.upscale_for_print:
+            return image
+
+        h, w = image.shape[:2]
+        current_pixels = h * w
+
+        # Calculate scale factor
+        if self.settings.target_megapixels:
+            # Scale to target megapixels
+            target_pixels = self.settings.target_megapixels * 1_000_000
+            scale = np.sqrt(target_pixels / current_pixels)
+        else:
+            # Scale based on DPI ratio (72 DPI to 300 DPI = 4.17x)
+            scale = 300 / max(self.settings.output_dpi, 72)
+
+        if scale <= 1.0:
+            return image  # Already at or above target
+
+        # Calculate new dimensions
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+
+        # Select interpolation method
+        method = self.settings.upscale_method
+
+        if method == 'lanczos':
+            # Lanczos interpolation - best for photos
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+        elif method == 'cubic':
+            # Bicubic interpolation - faster, still good
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_CUBIC)
+        else:
+            # Default to lanczos (super_res would require ML model)
+            result = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+
+        # Apply subtle sharpening to compensate for upscaling softness
+        if scale > 1.5:
+            # Unsharp mask for large upscales
+            blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
+            result = cv2.addWeighted(result, 1.3, blurred, -0.3, 0)
+
+        return result
+
+    def _denoise_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Professional denoising for clean, grain-free output.
+
+        Uses multiple techniques:
+        1. Non-local means denoising (best quality)
+        2. Bilateral filter for edge preservation
+        3. Selective denoising (more in shadows where noise is visible)
+
+        This removes the grain/noise that can appear after HDR processing,
+        especially in shadow areas that were lifted.
+        """
+        strength = self.settings.denoise_strength
+
+        if strength <= 0:
+            return image
+
+        # Calculate denoising parameters based on strength
+        # h parameter for Non-local means (higher = more denoising)
+        h_luminance = 3 + strength * 7  # Range: 3-10
+        h_color = 3 + strength * 7
+
+        if self.settings.denoise_preserve_detail:
+            # Method 1: Non-local means (best quality, slower)
+            # Works in LAB space for better results
+            denoised = cv2.fastNlMeansDenoisingColored(
+                image,
+                None,
+                h_luminance,  # h (luminance strength)
+                h_color,      # hColor (color strength)
+                7,            # templateWindowSize
+                21            # searchWindowSize
+            )
+
+            # Blend based on luminance - denoise shadows more than highlights
+            # Noise is more visible in shadows
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+
+            # Shadow mask: more denoising in dark areas
+            shadow_weight = np.power(1.0 - gray, 1.5)
+            shadow_weight = cv2.GaussianBlur(shadow_weight, (15, 15), 0)
+
+            # Highlight areas: less denoising to preserve detail
+            highlight_weight = 1.0 - shadow_weight * 0.5
+
+            # Create blend mask (3 channel)
+            blend_mask = np.stack([
+                0.3 + shadow_weight * 0.5,  # More denoising in shadows
+                0.3 + shadow_weight * 0.5,
+                0.3 + shadow_weight * 0.5
+            ], axis=-1)
+
+            # Blend original with denoised
+            result = (image.astype(np.float32) * (1 - blend_mask) +
+                     denoised.astype(np.float32) * blend_mask)
+
+            result = np.clip(result, 0, 255).astype(np.uint8)
+
+        else:
+            # Method 2: Simple bilateral filter (faster, still good)
+            d = 9  # Diameter
+            sigma_color = 50 + strength * 50  # 50-100
+            sigma_space = 50 + strength * 50
+
+            result = cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+
+        # Optional: Light sharpening to recover any lost detail
+        if self.settings.denoise_preserve_detail and strength > 0.3:
+            # Very subtle unsharp mask
+            blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
+            result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
+
+        return result
 
 
 # ============================================================================
