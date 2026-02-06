@@ -3,7 +3,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.0.0'
+const APP_VERSION = 'v2.1.0'
+
+// Backend URL from environment variable or default
+const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
 
 // RAW file extensions (browsers can't display these)
 const RAW_EXTENSIONS = [
@@ -32,46 +35,13 @@ export default function Home() {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
-  const [useLocalBackend, setUseLocalBackend] = useState(false) // Start with cloud, auto-detect Pro
-  const [backendUrl, setBackendUrl] = useState('http://192.168.1.147:8000')
+  const [useLocalBackend, setUseLocalBackend] = useState(true)
+  const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL)
   const [showBackendSettings, setShowBackendSettings] = useState(false)
+
+  // Pro Engine auto-detection
   const [proProcessorStatus, setProProcessorStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking')
   const [proProcessorVersion, setProProcessorVersion] = useState<string | null>(null)
-
-  // Auto-detect Pro Processor on mount
-  useEffect(() => {
-    const checkProProcessor = async () => {
-      try {
-        const controller = new AbortController()
-        const timeout = setTimeout(() => controller.abort(), 3000) // 3s timeout
-
-        const res = await fetch(`${backendUrl}/health`, {
-          signal: controller.signal,
-          mode: 'cors'
-        })
-        clearTimeout(timeout)
-
-        if (res.ok) {
-          const data = await res.json()
-          if (data.pro_processor_available) {
-            setProProcessorStatus('connected')
-            setProProcessorVersion(data.components?.pro_processor?.version || 'unknown')
-            setUseLocalBackend(true)
-          } else {
-            setProProcessorStatus('unavailable')
-          }
-        } else {
-          setProProcessorStatus('unavailable')
-        }
-      } catch (e) {
-        // Pro Processor not reachable (expected for remote users)
-        setProProcessorStatus('unavailable')
-        setUseLocalBackend(false)
-      }
-    }
-
-    checkProProcessor()
-  }, [backendUrl])
 
   // Adjustment sliders state
   const [brightness, setBrightness] = useState(0)
@@ -83,6 +53,58 @@ export default function Home() {
   const [comparePosition, setComparePosition] = useState(50)
   const [isDragging, setIsDragging] = useState(false)
   const compareRef = useRef<HTMLDivElement>(null)
+
+  // Progress tracking
+  const [progress, setProgress] = useState(0)
+  const [progressStatus, setProgressStatus] = useState('')
+  const progressInterval = useRef<NodeJS.Timeout | null>(null)
+
+  // Cleanup progress interval on unmount
+  useEffect(() => {
+    return () => {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+      }
+    }
+  }, [])
+
+  // Auto-detect Pro Processor on mount
+  useEffect(() => {
+    const checkProProcessor = async () => {
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 3000) // 3 second timeout
+
+        const res = await fetch(`${backendUrl}/health`, {
+          signal: controller.signal,
+          mode: 'cors',
+        })
+
+        clearTimeout(timeout)
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.pro_processor_available) {
+            setProProcessorStatus('connected')
+            setProProcessorVersion(data.components?.pro_processor?.version || 'unknown')
+            setUseLocalBackend(true)
+          } else {
+            setProProcessorStatus('unavailable')
+            setUseLocalBackend(false)
+          }
+        } else {
+          setProProcessorStatus('unavailable')
+          setUseLocalBackend(false)
+        }
+      } catch (e) {
+        // Pro Processor not reachable (expected on live site)
+        setProProcessorStatus('unavailable')
+        setUseLocalBackend(false)
+      }
+    }
+
+    checkProProcessor()
+  }, [backendUrl])
 
   const SUPPORTED_EXTENSIONS = [
     '.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp', '.svg',
@@ -113,11 +135,42 @@ export default function Home() {
   const processImages = async () => {
     if (files.length === 0) return
 
+    // Block RAW files when Pro Engine not available
+    if (!useLocalBackend) {
+      const rawFiles = files.filter(f => isRawFile(f.name))
+      if (rawFiles.length > 0) {
+        setError(`RAW files (${rawFiles.map(f => f.name.split('.').pop()?.toUpperCase()).join(', ')}) require the Pro Engine. Please use JPG/PNG files for cloud processing.`)
+        return
+      }
+    }
+
     setProcessing(true)
     setResult(null)
     setResultUrl(null)
     setOriginalUrl(null)
     setError(null)
+    setProgress(0)
+    setProgressStatus('Uploading images...')
+
+    // Start progress simulation
+    const stages = [
+      { pct: 10, msg: 'Uploading images...' },
+      { pct: 25, msg: 'Reading RAW files...' },
+      { pct: 40, msg: 'Aligning brackets...' },
+      { pct: 55, msg: 'Merging exposures...' },
+      { pct: 70, msg: 'Applying tone mapping...' },
+      { pct: 85, msg: 'Color grading...' },
+      { pct: 95, msg: 'Finalizing...' },
+    ]
+    let stageIndex = 0
+
+    progressInterval.current = setInterval(() => {
+      if (stageIndex < stages.length) {
+        setProgress(stages[stageIndex].pct)
+        setProgressStatus(stages[stageIndex].msg)
+        stageIndex++
+      }
+    }, 2000)
 
     try {
       const originalFile = files[Math.floor(files.length / 2)]
@@ -138,29 +191,21 @@ export default function Home() {
         white_balance: whiteBalance.toString(),
       })
 
-      // Check for RAW files when using cloud (cloud doesn't support RAW)
-      const hasRawFiles = files.some(f => isRawFile(f.name))
-      if (!useLocalBackend && hasRawFiles) {
-        throw new Error('RAW files require Pro Engine. Please use JPG/PNG or enable Pro Engine for RAW support.')
-      }
-
       const apiUrl = useLocalBackend
         ? `${backendUrl}/process?${params}`
         : `/api/process?${params}`
 
-      let response: Response
-      try {
-        response = await fetch(apiUrl, {
-          method: 'POST',
-          body: formData,
-        })
-      } catch (fetchError) {
-        // If Pro Engine fails, offer to retry with cloud
-        if (useLocalBackend) {
-          throw new Error('Pro Engine unreachable. Check that your local server is running, or disable Pro Engine to use cloud processing.')
-        }
-        throw fetchError
-      }
+      // Create abort controller for timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+
+      const response = await fetch(apiUrl, {
+        method: 'POST',
+        body: formData,
+        signal: controller.signal,
+      })
+
+      clearTimeout(timeoutId)
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -168,14 +213,32 @@ export default function Home() {
       }
 
       const blob = await response.blob()
+
+      // Validate we got an image back
+      if (blob.size < 1000) {
+        throw new Error('Received invalid response from server')
+      }
+
       const url = URL.createObjectURL(blob)
 
+      setProgress(100)
+      setProgressStatus('Complete!')
       setResultUrl(url)
-      setResult(useLocalBackend ? 'Pro processing complete!' : 'Processing complete (basic)')
+      setResult('Processing complete!')
     } catch (err: any) {
       console.error('Processing error:', err)
-      setError(err.message || 'Processing failed')
+      if (err.name === 'AbortError') {
+        setError('Request timed out. Check if the backend is running and accessible.')
+      } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+        setError('Cannot connect to backend. Click the gear icon to check the Engine URL.')
+      } else {
+        setError(err.message || 'Processing failed')
+      }
     } finally {
+      if (progressInterval.current) {
+        clearInterval(progressInterval.current)
+        progressInterval.current = null
+      }
       setProcessing(false)
     }
   }
@@ -201,6 +264,8 @@ export default function Home() {
     setVibrance(0)
     setWhiteBalance(0)
     setComparePosition(50)
+    setProgress(0)
+    setProgressStatus('')
   }
 
   const handleCompareMouseDown = () => setIsDragging(true)
@@ -272,28 +337,30 @@ export default function Home() {
         {/* Backend Status */}
         <div className="flex justify-center mb-8">
           <button
-            onClick={() => setUseLocalBackend(!useLocalBackend)}
+            onClick={() => proProcessorStatus === 'connected' && setUseLocalBackend(!useLocalBackend)}
             className={`flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all ${
-              useLocalBackend
+              proProcessorStatus === 'checking'
+                ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/30'
+                : proProcessorStatus === 'connected' && useLocalBackend
                 ? 'bg-emerald-500/10 text-emerald-400 border border-emerald-500/30'
                 : 'bg-gray-800/50 text-gray-400 border border-gray-700'
             }`}
+            disabled={proProcessorStatus !== 'connected'}
           >
             <span className={`w-2 h-2 rounded-full ${
-              proProcessorStatus === 'checking' ? 'bg-yellow-400 animate-pulse' :
-              proProcessorStatus === 'connected' && useLocalBackend ? 'bg-emerald-400 animate-pulse' :
-              'bg-gray-500'
+              proProcessorStatus === 'checking' ? 'bg-yellow-400 animate-pulse'
+              : proProcessorStatus === 'connected' && useLocalBackend ? 'bg-emerald-400 animate-pulse'
+              : 'bg-gray-500'
             }`} />
-            {proProcessorStatus === 'checking' ? 'Detecting Pro Engine...' :
-             proProcessorStatus === 'connected' && useLocalBackend ? `Pro Engine v${proProcessorVersion}` :
-             proProcessorStatus === 'connected' ? 'Pro Engine Available (tap to enable)' :
-             'Cloud Processing (Basic)'}
+            {proProcessorStatus === 'checking' ? 'Detecting Pro Engine...'
+              : proProcessorStatus === 'connected' && useLocalBackend
+                ? `Pro Engine ${proProcessorVersion || 'Connected'}`
+                : 'Cloud Processing'}
           </button>
-          {(useLocalBackend || proProcessorStatus === 'unavailable') && (
+          {useLocalBackend && (
             <button
               onClick={() => setShowBackendSettings(!showBackendSettings)}
               className="ml-2 p-2 text-gray-400 hover:text-white transition"
-              title="Configure Pro Engine URL"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -303,20 +370,7 @@ export default function Home() {
           )}
         </div>
 
-        {/* Pro Engine unavailable notice */}
-        {proProcessorStatus === 'unavailable' && (
-          <div className="flex justify-center mb-6">
-            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 max-w-lg text-center">
-              <p className="text-amber-400 text-sm font-medium mb-1">Pro Engine Not Detected</p>
-              <p className="text-gray-400 text-xs">
-                Using basic cloud processing (JPG/PNG only). For RAW support and 95%+ quality,
-                run Pro Engine locally or connect to your Mac Studio.
-              </p>
-            </div>
-          </div>
-        )}
-
-        {showBackendSettings && (
+        {showBackendSettings && useLocalBackend && (
           <div className="flex justify-center mb-6">
             <div className="flex items-center gap-3 bg-gray-900/80 backdrop-blur rounded-xl px-4 py-3 border border-gray-800">
               <span className="text-sm text-gray-400">Engine URL:</span>
@@ -328,21 +382,11 @@ export default function Home() {
               />
               <button
                 onClick={async () => {
-                  setProProcessorStatus('checking')
                   try {
                     const res = await fetch(`${backendUrl}/health`)
                     const data = await res.json()
-                    if (data.pro_processor_available) {
-                      setProProcessorStatus('connected')
-                      setProProcessorVersion(data.components?.pro_processor?.version || 'unknown')
-                      setUseLocalBackend(true)
-                      alert(`Connected to Pro Engine v${data.components?.pro_processor?.version}!`)
-                    } else {
-                      setProProcessorStatus('unavailable')
-                      alert('Server found but Pro Processor not available.')
-                    }
+                    alert(`Connected! Version: ${data.components?.pro_processor?.version || 'Unknown'}`)
                   } catch (e) {
-                    setProProcessorStatus('unavailable')
                     alert('Connection failed. Check URL and server status.')
                   }
                 }}
@@ -387,6 +431,24 @@ export default function Home() {
             </span>
           </button>
         </div>
+
+        {/* Pro Engine Unavailable Warning */}
+        {proProcessorStatus === 'unavailable' && (
+          <div className="mb-8 p-4 bg-amber-500/10 border border-amber-500/30 rounded-xl">
+            <div className="flex items-start gap-3">
+              <svg className="w-5 h-5 text-amber-400 mt-0.5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+              </svg>
+              <div>
+                <p className="text-amber-400 font-medium">Pro Engine Not Available</p>
+                <p className="text-gray-400 text-sm mt-1">
+                  Using cloud processing. RAW files (CR2, NEF, ARW, etc.) require the Pro Engine.
+                  Standard JPG/PNG processing is still available.
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Upload Area */}
         <div
@@ -518,6 +580,22 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Processing Progress Bar */}
+            {processing && (
+              <div className="mb-4">
+                <div className="flex justify-between text-sm mb-2">
+                  <span className="text-cyan-400 font-medium">{progressStatus}</span>
+                  <span className="text-gray-400">{progress}%</span>
+                </div>
+                <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-500 ease-out"
+                    style={{ width: `${progress}%` }}
+                  />
+                </div>
+              </div>
+            )}
+
             <button
               onClick={processImages}
               disabled={processing || (mode === 'hdr' && files.length < 2)}
@@ -548,12 +626,31 @@ export default function Home() {
         {/* Error */}
         {error && (
           <div className="mt-8 p-6 bg-red-900/20 border border-red-500/30 rounded-xl">
-            <p className="text-red-400 flex items-center gap-2">
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <p className="text-red-400 flex items-center gap-2 mb-3">
+              <svg className="w-5 h-5 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
               {error}
             </p>
+            {(error.includes('connect') || error.includes('timeout') || error.includes('Engine URL')) && (
+              <div className="flex gap-3">
+                <button
+                  onClick={() => setShowBackendSettings(true)}
+                  className="px-4 py-2 bg-red-500/20 text-red-400 text-sm rounded-lg hover:bg-red-500/30 transition font-medium"
+                >
+                  Check Backend Settings
+                </button>
+                <button
+                  onClick={() => {
+                    setError(null)
+                    setProgress(0)
+                  }}
+                  className="px-4 py-2 bg-gray-700 text-gray-300 text-sm rounded-lg hover:bg-gray-600 transition font-medium"
+                >
+                  Dismiss
+                </button>
+              </div>
+            )}
           </div>
         )}
 
@@ -606,7 +703,7 @@ export default function Home() {
         {/* Footer */}
         <footer className="mt-20 pt-8 border-t border-gray-800 text-center">
           <p className="text-gray-400">
-            HDRit • Made by <a href="https://linky.my" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a>
+            HDRit • Made by <a href="https://linky.my" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a>
           </p>
           <p className="mt-2 text-xs text-gray-600">
             {APP_VERSION} • Pro Processor v4.7.0
