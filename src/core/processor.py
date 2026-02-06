@@ -158,22 +158,24 @@ class AutoHDRProcessor:
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l_channel = lab[:, :, 0]
 
-        # CLAHE - aggressive for real estate (very bright shadows needed)
-        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        # CLAHE - maximum for real estate (very bright shadows needed)
+        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
         l_enhanced = clahe.apply(l_channel)
 
-        # Blend: 75% CLAHE for brighter shadows
-        l_channel = cv2.addWeighted(l_channel, 0.25, l_enhanced, 0.75, 0)
+        # Blend: 80% CLAHE for maximum shadow lift
+        l_channel = cv2.addWeighted(l_channel, 0.20, l_enhanced, 0.80, 0)
         lab[:, :, 0] = l_channel
         result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         img_float = result.astype(np.float32) / 255.0
 
         # ==========================================
-        # STEP 2: COOL WHITE BALANCE
+        # STEP 2: AGGRESSIVE COOL WHITE BALANCE
         # ==========================================
-        img_float[:, :, 2] *= 0.96   # Red down
-        img_float[:, :, 0] *= 1.025  # Blue up
+        # Remove warm cast - push toward neutral/cool
+        img_float[:, :, 2] *= 0.92   # Red down 8%
+        img_float[:, :, 1] *= 0.97   # Green down 3%
+        img_float[:, :, 0] *= 1.06   # Blue up 6%
 
         luminance = cv2.cvtColor(np.clip(img_float, 0, 1).astype(np.float32), cv2.COLOR_BGR2GRAY)
 
@@ -197,11 +199,11 @@ class AutoHDRProcessor:
             result = (result - p_low) / (p_high - p_low)
 
         # ==========================================
-        # STEP 5: GAMMA + BRIGHTNESS (pushed harder)
+        # STEP 5: GAMMA + BRIGHTNESS (MAXIMUM for real estate)
         # ==========================================
         result = np.clip(result, 0, 1)
-        result = np.power(result, 0.76)  # More aggressive gamma
-        result = result * 1.14 + 0.025   # Stronger brightness push
+        result = np.power(result, 0.65)  # Maximum gamma lift
+        result = result * 1.25 + 0.05    # Maximum brightness
 
         # ==========================================
         # STEP 6: BILATERAL FILTER (edge-aware smoothing)
@@ -217,12 +219,18 @@ class AutoHDRProcessor:
         result = self._local_contrast(result, strength=0.28)
 
         # ==========================================
-        # STEP 8: WHITE PUSH
+        # STEP 8: AGGRESSIVE WHITE PUSH
         # ==========================================
+        # Find bright areas and push toward PURE white
         result_lum = np.mean(result, axis=2)
-        white_mask = np.clip((result_lum - 0.72) / 0.28, 0, 1)
+        white_mask = np.clip((result_lum - 0.60) / 0.40, 0, 1)  # Wider range
+
+        # Strong push to pure white
         for i in range(3):
-            result[:, :, i] = result[:, :, i] + white_mask * 0.07
+            # Blend toward pure white (1.0)
+            result[:, :, i] = result[:, :, i] * (1 - white_mask * 0.5) + white_mask * 0.5
+            # Additional brightness push
+            result[:, :, i] = result[:, :, i] + white_mask * 0.10
 
         # ==========================================
         # STEP 9: COLOR BOOST (LAB + HSV)

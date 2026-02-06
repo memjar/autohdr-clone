@@ -580,7 +580,7 @@ async def process_images(
         # ==========================================
         # STEP 3: Encode and return
         # ==========================================
-        result_bytes = image_to_bytes(result, ".jpg", quality=90)
+        result_bytes = image_to_bytes(result, ".jpg", quality=98)  # Full resolution output
 
         elapsed_ms = (time.time() - start_time) * 1000
         print(f"   ✓ Complete in {elapsed_ms:.0f}ms, output: {len(result_bytes)} bytes")
