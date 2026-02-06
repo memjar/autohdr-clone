@@ -138,9 +138,13 @@ class AutoHDRProProcessor:
         # Use output style to determine intensity
         strength = self.settings.hdr_strength
         if self.settings.output_style == 'intense':
-            strength *= 1.3
+            strength *= 1.4  # More aggressive for intense mode
 
         result = self._apply_flambient_tone_mapping(result, strength)
+
+        # Intense mode: additional contrast boost
+        if self.settings.output_style == 'intense':
+            result = self._boost_contrast_intense(result)
 
         # ====== STAGE 3: WINDOW PULL ======
         if self.settings.window_pull != 'off' and scene == 'interior':
@@ -512,6 +516,25 @@ class AutoHDRProProcessor:
         result = 0.5 + curved * 0.5
 
         return L * (1 - amount) + result * amount
+
+    def _boost_contrast_intense(self, image: np.ndarray) -> np.ndarray:
+        """
+        Additional contrast boost for 'intense' output style.
+        Adds punch and drama without going overboard.
+        """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+
+        # Boost L channel contrast
+        L = lab[:, :, 0]
+        L = (L - 128) * 1.15 + 128
+        lab[:, :, 0] = np.clip(L, 0, 255)
+
+        # Slight saturation boost
+        lab[:, :, 1] = 128 + (lab[:, :, 1] - 128) * 1.08
+        lab[:, :, 2] = 128 + (lab[:, :, 2] - 128) * 1.08
+        lab = np.clip(lab, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     # ========================================================================
     # PROFESSIONAL WINDOW PULL
