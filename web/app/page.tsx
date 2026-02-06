@@ -330,12 +330,17 @@ export default function Home() {
           </div>
           <p className="text-xl mb-2">
             {mode === 'hdr'
-              ? 'Drop bracket images here (2-9 exposures)'
+              ? 'Drop your bracket photos here'
               : 'Drop a daytime exterior photo'}
           </p>
           <p className="text-gray-500">or click to browse</p>
+          {mode === 'hdr' && (
+            <p className="text-cyan-400/80 text-sm mt-2">
+              Upload 3-15+ photos • Auto-groups by scene • Multiple rooms supported
+            </p>
+          )}
           <p className="text-gray-600 text-xs mt-3">
-            JPG, PNG, TIFF, RAW, PDF, PSD • Canon, Nikon, Sony, Fuji + all cameras
+            JPG, PNG, TIFF, RAW • Canon, Nikon, Sony, Fuji + all cameras
           </p>
         </label>
       </div>
@@ -344,9 +349,16 @@ export default function Home() {
       {files.length > 0 && (
         <div className="mt-8">
           <div className="flex justify-between items-center mb-4">
-            <h2 className="text-lg font-semibold">
-              {files.length} image{files.length > 1 ? 's' : ''} selected
-            </h2>
+            <div>
+              <h2 className="text-lg font-semibold">
+                {files.length} image{files.length > 1 ? 's' : ''} selected
+              </h2>
+              {files.length > 5 && mode === 'hdr' && (
+                <p className="text-cyan-400 text-xs mt-1">
+                  🧠 AI will auto-detect ~{Math.ceil(files.length / 3)} scene{Math.ceil(files.length / 3) > 1 ? 's' : ''} and group brackets
+                </p>
+              )}
+            </div>
             <button
               onClick={() => setFiles([])}
               className="text-red-400 hover:text-red-300"

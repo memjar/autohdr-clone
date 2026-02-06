@@ -771,6 +771,201 @@ class AutoHDRProProcessor:
         return result
 
     # ========================================================================
+    # AUTOMATIC BRACKET GROUPING (Multi-Scene Processing)
+    # ========================================================================
+
+    @staticmethod
+    def group_brackets_by_scene(
+        images: List[np.ndarray],
+        similarity_threshold: float = 0.85,
+        min_brightness_diff: float = 20.0,
+        expected_brackets_per_scene: int = 3
+    ) -> List[List[int]]:
+        """
+        Automatically group uploaded images into bracket sets by scene.
+
+        When photographers upload 10-15 photos (e.g., 5 rooms x 3 brackets each),
+        this function identifies which images belong together based on:
+        1. Scene similarity (same composition/angle)
+        2. Brightness differences (exposure brackets)
+
+        Args:
+            images: List of all uploaded images
+            similarity_threshold: How similar images must be to be same scene (0-1)
+            min_brightness_diff: Minimum brightness difference for brackets
+            expected_brackets_per_scene: Typical number of brackets (3 for -2/0/+2 EV)
+
+        Returns:
+            List of index groups, e.g., [[0,1,2], [3,4,5], [6,7,8]]
+            Each inner list contains indices of images that should be merged together.
+        """
+        if len(images) < 2:
+            return [[0]] if images else []
+
+        n = len(images)
+
+        # Step 1: Calculate features for each image
+        features = []
+        for img in images:
+            # Resize for faster processing
+            small = cv2.resize(img, (64, 64))
+            gray = cv2.cvtColor(small, cv2.COLOR_BGR2GRAY)
+
+            # Calculate histogram (normalized)
+            hist = cv2.calcHist([gray], [0], None, [32], [0, 256])
+            hist = cv2.normalize(hist, hist).flatten()
+
+            # Calculate mean brightness
+            brightness = np.mean(gray)
+
+            # Calculate edge structure (for scene matching)
+            edges = cv2.Canny(gray, 50, 150)
+            edge_hist = cv2.calcHist([edges], [0], None, [2], [0, 256])
+            edge_ratio = edge_hist[1][0] / (edge_hist[0][0] + edge_hist[1][0] + 1e-6)
+
+            # Color histogram for scene matching
+            hsv = cv2.cvtColor(small, cv2.COLOR_BGR2HSV)
+            color_hist = cv2.calcHist([hsv], [0, 1], None, [8, 8], [0, 180, 0, 256])
+            color_hist = cv2.normalize(color_hist, color_hist).flatten()
+
+            features.append({
+                'brightness': brightness,
+                'hist': hist,
+                'edge_ratio': edge_ratio,
+                'color_hist': color_hist,
+                'index': len(features)
+            })
+
+        # Step 2: Calculate scene similarity matrix
+        def scene_similarity(f1, f2):
+            """Compare two images for scene similarity (ignoring brightness)."""
+            # Histogram correlation (structure similarity)
+            hist_sim = cv2.compareHist(
+                f1['hist'].reshape(-1, 1).astype(np.float32),
+                f2['hist'].reshape(-1, 1).astype(np.float32),
+                cv2.HISTCMP_CORREL
+            )
+
+            # Color histogram similarity
+            color_sim = cv2.compareHist(
+                f1['color_hist'].reshape(-1, 1).astype(np.float32),
+                f2['color_hist'].reshape(-1, 1).astype(np.float32),
+                cv2.HISTCMP_CORREL
+            )
+
+            # Edge structure similarity
+            edge_sim = 1.0 - abs(f1['edge_ratio'] - f2['edge_ratio'])
+
+            # Weighted combination (color and edges matter more for scene matching)
+            return hist_sim * 0.3 + color_sim * 0.5 + edge_sim * 0.2
+
+        # Step 3: Group images by scene similarity
+        used = set()
+        groups = []
+
+        # Sort by brightness to help with bracket detection
+        sorted_indices = sorted(range(n), key=lambda i: features[i]['brightness'])
+
+        for start_idx in sorted_indices:
+            if start_idx in used:
+                continue
+
+            # Start a new group with this image
+            group = [start_idx]
+            used.add(start_idx)
+
+            # Find similar images (same scene, different brightness)
+            for other_idx in sorted_indices:
+                if other_idx in used:
+                    continue
+
+                # Check scene similarity
+                sim = scene_similarity(features[start_idx], features[other_idx])
+
+                if sim >= similarity_threshold:
+                    # Check brightness difference (should be different exposures)
+                    brightness_diff = abs(
+                        features[start_idx]['brightness'] -
+                        features[other_idx]['brightness']
+                    )
+
+                    # Same scene but different exposure = bracket
+                    if brightness_diff >= min_brightness_diff or sim >= 0.95:
+                        group.append(other_idx)
+                        used.add(other_idx)
+
+                        # Stop if we have expected number of brackets
+                        if len(group) >= expected_brackets_per_scene + 2:
+                            break
+
+            # Sort group by brightness (dark to bright)
+            group.sort(key=lambda i: features[i]['brightness'])
+            groups.append(group)
+
+        # Step 4: Validate and clean up groups
+        final_groups = []
+        for group in groups:
+            if len(group) >= 2:
+                # Valid bracket group
+                final_groups.append(group)
+            else:
+                # Single image - still process it
+                final_groups.append(group)
+
+        return final_groups
+
+    def process_multiple_scenes(
+        self,
+        images: List[np.ndarray],
+        auto_group: bool = True
+    ) -> List[np.ndarray]:
+        """
+        Process multiple scenes from a batch upload.
+
+        This is the main entry point for photographers uploading many photos.
+        Automatically groups by scene and processes each bracket set.
+
+        Args:
+            images: All uploaded images
+            auto_group: Whether to auto-detect bracket groups
+
+        Returns:
+            List of processed images (one per scene)
+        """
+        if not images:
+            return []
+
+        if not auto_group or len(images) <= 3:
+            # Process as single bracket set
+            return [self.process_brackets(images)]
+
+        # Group images by scene
+        groups = self.group_brackets_by_scene(images)
+
+        print(f"[HDR it] Auto-detected {len(groups)} scene(s) from {len(images)} images")
+        for i, group in enumerate(groups):
+            brightnesses = [np.mean(cv2.cvtColor(images[idx], cv2.COLOR_BGR2GRAY))
+                          for idx in group]
+            print(f"  Scene {i+1}: {len(group)} brackets, brightness range: "
+                  f"{min(brightnesses):.0f}-{max(brightnesses):.0f}")
+
+        # Process each group
+        results = []
+        for i, group_indices in enumerate(groups):
+            bracket_images = [images[idx] for idx in group_indices]
+
+            if len(bracket_images) >= 2:
+                # HDR merge
+                result = self.process_brackets(bracket_images)
+            else:
+                # Single image processing
+                result = self.process(bracket_images[0])
+
+            results.append(result)
+
+        return results
+
+    # ========================================================================
     # CORE TECHNIQUE: MERTENS EXPOSURE FUSION
     # ========================================================================
 

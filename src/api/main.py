@@ -666,7 +666,6 @@ async def process_images(
         # STEP 2: Process with Pro Processor (if available and multiple brackets)
         # ==========================================
         if len(image_arrays) > 1 and HAS_PRO_PROCESSOR:
-            print(f"   🎯 Using Pro Processor v{PRO_VERSION} for {len(image_arrays)} brackets...")
             pro_settings = ProSettings(
                 brightness=brightness,
                 contrast=contrast,
@@ -674,23 +673,75 @@ async def process_images(
                 white_balance=whiteBalance,
             )
             pro_processor = AutoHDRProProcessor(pro_settings)
-            result = pro_processor.process_brackets(image_arrays)
 
-            # Encode and return directly - Pro processor handles everything
-            result_bytes = image_to_bytes(result, ".jpg", quality=98)
-            elapsed_ms = (time.time() - start_time) * 1000
-            print(f"   ✓ Pro Processor complete in {elapsed_ms:.0f}ms")
+            # Check if this looks like multiple scenes (more than typical bracket count)
+            if len(image_arrays) > 5:
+                # Multi-scene processing: auto-group by scene
+                print(f"   🎯 Multi-scene mode: {len(image_arrays)} images, auto-grouping...")
+                results = pro_processor.process_multiple_scenes(image_arrays, auto_group=True)
 
-            return Response(
-                content=result_bytes,
-                media_type="image/jpeg",
-                headers={
-                    "Content-Disposition": f'attachment; filename="autohdr_{mode}.jpg"',
-                    "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
-                    "X-Images-Processed": str(len(images)),
-                    "X-Processor": f"Pro v{PRO_VERSION}",
-                }
-            )
+                if len(results) == 1:
+                    # Single scene detected
+                    result = results[0]
+                    result_bytes = image_to_bytes(result, ".jpg", quality=98)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    print(f"   ✓ Single scene processed in {elapsed_ms:.0f}ms")
+
+                    return Response(
+                        content=result_bytes,
+                        media_type="image/jpeg",
+                        headers={
+                            "Content-Disposition": f'attachment; filename="hdrit_{mode}_1.jpg"',
+                            "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                            "X-Images-Processed": str(len(images)),
+                            "X-Scenes-Detected": "1",
+                            "X-Processor": f"Pro v{PRO_VERSION}",
+                        }
+                    )
+                else:
+                    # Multiple scenes - return as ZIP
+                    import zipfile
+                    zip_buffer = io.BytesIO()
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                        for i, result in enumerate(results):
+                            img_bytes = image_to_bytes(result, ".jpg", quality=98)
+                            zf.writestr(f"hdrit_scene_{i+1:02d}.jpg", img_bytes)
+
+                    zip_buffer.seek(0)
+                    elapsed_ms = (time.time() - start_time) * 1000
+                    print(f"   ✓ {len(results)} scenes processed in {elapsed_ms:.0f}ms")
+
+                    return Response(
+                        content=zip_buffer.getvalue(),
+                        media_type="application/zip",
+                        headers={
+                            "Content-Disposition": f'attachment; filename="hdrit_batch_{len(results)}_scenes.zip"',
+                            "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                            "X-Images-Processed": str(len(images)),
+                            "X-Scenes-Detected": str(len(results)),
+                            "X-Processor": f"Pro v{PRO_VERSION}",
+                        }
+                    )
+            else:
+                # Standard bracket processing (2-5 images = single scene)
+                print(f"   🎯 Using Pro Processor v{PRO_VERSION} for {len(image_arrays)} brackets...")
+                result = pro_processor.process_brackets(image_arrays)
+
+                # Encode and return directly - Pro processor handles everything
+                result_bytes = image_to_bytes(result, ".jpg", quality=98)
+                elapsed_ms = (time.time() - start_time) * 1000
+                print(f"   ✓ Pro Processor complete in {elapsed_ms:.0f}ms")
+
+                return Response(
+                    content=result_bytes,
+                    media_type="image/jpeg",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
+                        "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                        "X-Images-Processed": str(len(images)),
+                        "X-Processor": f"Pro v{PRO_VERSION}",
+                    }
+                )
 
         # Fallback: merge brackets with legacy fusion
         if len(image_arrays) > 1:
