@@ -148,36 +148,98 @@ class AutoHDRProcessor:
 
     def apply_hdr_effect(self, image: np.ndarray, strength: float = 0.7) -> np.ndarray:
         """
-        HDR Tone Mapping - THE PRIMARY EFFECT
-        Boosts shadows, compresses highlights for balanced exposure.
+        HDR Tone Mapping - Real Estate Style (v11)
+        Based on research: CLAHE + bilateral filtering + improved shadow recovery
         """
-        # Convert to float
-        img_float = image.astype(np.float32) / 255.0
+        # ==========================================
+        # STEP 1: CLAHE ON LUMINANCE (key for floor recovery)
+        # ==========================================
+        # Convert to LAB, apply CLAHE to L channel only
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l_channel = lab[:, :, 0]
 
-        # Compute luminance
-        luminance = cv2.cvtColor(img_float, cv2.COLOR_BGR2GRAY)
+        # CLAHE - aggressive for real estate (very bright shadows needed)
+        clahe = cv2.createCLAHE(clipLimit=3.5, tileGridSize=(8, 8))
+        l_enhanced = clahe.apply(l_channel)
 
-        # Shadow boost (inverse relationship - darker areas get boosted more)
+        # Blend: 75% CLAHE for brighter shadows
+        l_channel = cv2.addWeighted(l_channel, 0.25, l_enhanced, 0.75, 0)
+        lab[:, :, 0] = l_channel
+        result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+        img_float = result.astype(np.float32) / 255.0
+
+        # ==========================================
+        # STEP 2: COOL WHITE BALANCE
+        # ==========================================
+        img_float[:, :, 2] *= 0.96   # Red down
+        img_float[:, :, 0] *= 1.025  # Blue up
+
+        luminance = cv2.cvtColor(np.clip(img_float, 0, 1).astype(np.float32), cv2.COLOR_BGR2GRAY)
+
+        # ==========================================
+        # STEP 3: ADAPTIVE SHADOW LIFTING
+        # ==========================================
+        # Stronger lift in darker areas (floor fix)
         shadows = 1.0 - luminance
-        shadow_boost = np.power(shadows, 2.0) * strength
+        shadow_lift = np.power(shadows, 1.2) * 0.45 * strength
 
-        # Highlight compression (brighter areas compressed)
-        highlight_compression = np.power(luminance, 0.6)
-
-        # Apply to all channels
         result = img_float.copy()
         for i in range(3):
-            # Add shadow detail
-            result[:, :, i] = result[:, :, i] + shadow_boost * 0.3
-            # Compress highlights
-            result[:, :, i] = result[:, :, i] * (0.7 + 0.3 * highlight_compression)
+            result[:, :, i] = result[:, :, i] + shadow_lift
 
-        # Local contrast enhancement
-        result = self._local_contrast(result, strength=0.3)
+        # ==========================================
+        # STEP 4: AUTO LEVELS
+        # ==========================================
+        p_low = np.percentile(result, 0.2)
+        p_high = np.percentile(result, 99.6)
+        if p_high - p_low > 0.1:
+            result = (result - p_low) / (p_high - p_low)
 
-        # Normalize and convert back
+        # ==========================================
+        # STEP 5: GAMMA + BRIGHTNESS (pushed harder)
+        # ==========================================
         result = np.clip(result, 0, 1)
-        return (result * 255).astype(np.uint8)
+        result = np.power(result, 0.76)  # More aggressive gamma
+        result = result * 1.14 + 0.025   # Stronger brightness push
+
+        # ==========================================
+        # STEP 6: BILATERAL FILTER (edge-aware smoothing)
+        # ==========================================
+        result_uint8 = np.clip(result * 255, 0, 255).astype(np.uint8)
+        # Bilateral preserves edges while smoothing tones
+        result_uint8 = cv2.bilateralFilter(result_uint8, 5, 40, 40)
+        result = result_uint8.astype(np.float32) / 255.0
+
+        # ==========================================
+        # STEP 7: LOCAL CONTRAST (clarity)
+        # ==========================================
+        result = self._local_contrast(result, strength=0.28)
+
+        # ==========================================
+        # STEP 8: WHITE PUSH
+        # ==========================================
+        result_lum = np.mean(result, axis=2)
+        white_mask = np.clip((result_lum - 0.72) / 0.28, 0, 1)
+        for i in range(3):
+            result[:, :, i] = result[:, :, i] + white_mask * 0.07
+
+        # ==========================================
+        # STEP 9: COLOR BOOST (LAB + HSV)
+        # ==========================================
+        result_uint8 = np.clip(result * 255, 0, 255).astype(np.uint8)
+
+        lab = cv2.cvtColor(result_uint8, cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 1] = 128 + (lab[:, :, 1] - 128) * 1.30
+        lab[:, :, 2] = 128 + (lab[:, :, 2] - 128) * 1.25
+        lab = np.clip(lab, 0, 255)
+        result_uint8 = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+        hsv = cv2.cvtColor(result_uint8, cv2.COLOR_BGR2HSV).astype(np.float32)
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.15, 0, 255)
+        result_uint8 = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+        return result_uint8
 
     def _local_contrast(self, img_float: np.ndarray, strength: float = 0.3) -> np.ndarray:
         """Apply local contrast enhancement (clarity)"""

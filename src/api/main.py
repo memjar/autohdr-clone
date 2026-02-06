@@ -262,12 +262,121 @@ def merge_brackets_mertens(images: List[np.ndarray]) -> np.ndarray:
         resized.append(img)
 
     # Mertens exposure fusion
+    # IMPORTANT: Pass uint8 images directly - Mertens handles conversion internally
     merge_mertens = cv2.createMergeMertens()
-    images_float = [img.astype(np.float32) / 255.0 for img in resized]
-    fusion = merge_mertens.process(images_float)
+    fusion = merge_mertens.process(resized)  # uint8 input, float32 output (0-1 range)
     fusion = np.clip(fusion * 255, 0, 255).astype(np.uint8)
 
     return fusion
+
+
+def _build_gaussian_pyramid(img: np.ndarray, levels: int) -> List[np.ndarray]:
+    """Build Gaussian pyramid."""
+    pyramid = [img.astype(np.float32)]
+    for _ in range(levels - 1):
+        img = cv2.pyrDown(img)
+        pyramid.append(img.astype(np.float32))
+    return pyramid
+
+
+def _build_laplacian_pyramid(img: np.ndarray, levels: int) -> List[np.ndarray]:
+    """Build Laplacian pyramid from image."""
+    gaussian = _build_gaussian_pyramid(img, levels)
+    laplacian = []
+    for i in range(levels - 1):
+        size = (gaussian[i].shape[1], gaussian[i].shape[0])
+        upsampled = cv2.pyrUp(gaussian[i + 1], dstsize=size)
+        laplacian.append(gaussian[i] - upsampled)
+    laplacian.append(gaussian[-1])  # Top level is just gaussian
+    return laplacian
+
+
+def _reconstruct_from_laplacian(pyramid: List[np.ndarray]) -> np.ndarray:
+    """Reconstruct image from Laplacian pyramid."""
+    img = pyramid[-1]
+    for i in range(len(pyramid) - 2, -1, -1):
+        size = (pyramid[i].shape[1], pyramid[i].shape[0])
+        img = cv2.pyrUp(img, dstsize=size) + pyramid[i]
+    return img
+
+
+def _compute_weight_map(img: np.ndarray) -> np.ndarray:
+    """
+    Compute exposure fusion weight map based on:
+    - Contrast (Laplacian magnitude)
+    - Saturation
+    - Well-exposedness (how close to middle gray)
+    """
+    img_float = img.astype(np.float32) / 255.0
+
+    # Contrast weight (Laplacian filter response)
+    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    laplacian = np.abs(cv2.Laplacian(gray, cv2.CV_32F))
+    contrast = laplacian / (laplacian.max() + 1e-8)
+
+    # Saturation weight
+    saturation = img_float.std(axis=2)
+
+    # Well-exposedness (Gaussian centered at 0.5)
+    sigma = 0.2
+    well_exposed = np.exp(-0.5 * ((img_float - 0.5) ** 2) / (sigma ** 2))
+    well_exposed = np.prod(well_exposed, axis=2)  # Product across channels
+
+    # Combined weight
+    weight = (contrast ** 1.0) * (saturation ** 1.0) * (well_exposed ** 1.0)
+    weight = weight + 1e-8  # Avoid division by zero
+
+    return weight
+
+
+def merge_brackets_laplacian(images: List[np.ndarray], levels: int = 6) -> np.ndarray:
+    """
+    Laplacian pyramid exposure fusion - better than basic Mertens.
+    Based on "Exposure Fusion" by Mertens et al. with pyramid blending.
+    """
+    if len(images) == 1:
+        return images[0]
+
+    # Ensure all images same size
+    base_shape = images[0].shape[:2]
+    resized = []
+    for img in images:
+        if img.shape[:2] != base_shape:
+            img = cv2.resize(img, (base_shape[1], base_shape[0]))
+        resized.append(img)
+
+    n_images = len(resized)
+
+    # Compute weight maps for each image
+    weights = [_compute_weight_map(img) for img in resized]
+
+    # Normalize weights (sum to 1 at each pixel)
+    weight_sum = np.sum(weights, axis=0) + 1e-8
+    weights = [w / weight_sum for w in weights]
+
+    # Build Gaussian pyramids of weights
+    weight_pyramids = [_build_gaussian_pyramid(w, levels) for w in weights]
+
+    # Build Laplacian pyramids of images
+    laplacian_pyramids = [_build_laplacian_pyramid(img, levels) for img in resized]
+
+    # Blend at each pyramid level
+    blended_pyramid = []
+    for level in range(levels):
+        blended_level = np.zeros_like(laplacian_pyramids[0][level])
+        for i in range(n_images):
+            # Expand weight to 3 channels
+            w = weight_pyramids[i][level]
+            if len(blended_level.shape) == 3:
+                w = np.expand_dims(w, axis=2)
+            blended_level += w * laplacian_pyramids[i][level]
+        blended_pyramid.append(blended_level)
+
+    # Reconstruct from blended pyramid
+    result = _reconstruct_from_laplacian(blended_pyramid)
+    result = np.clip(result, 0, 255).astype(np.uint8)
+
+    return result
 
 
 # ============================================
@@ -428,8 +537,8 @@ async def process_images(
         # STEP 2: Merge brackets (if multiple images)
         # ==========================================
         if len(image_arrays) > 1:
-            print(f"   Merging {len(image_arrays)} brackets with Mertens fusion...")
-            base_image = merge_brackets_mertens(image_arrays)
+            print(f"   Merging {len(image_arrays)} brackets with Laplacian pyramid fusion...")
+            base_image = merge_brackets_laplacian(image_arrays)
         else:
             base_image = image_arrays[0]
 
