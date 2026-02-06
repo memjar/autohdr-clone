@@ -51,10 +51,11 @@ import sys
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 try:
-    from src.core.processor import AutoHDRProcessor, ProcessingSettings
+    from src.core.processor import AutoHDRProcessor, ProcessingSettings, PROCESSOR_VERSION
     HAS_PROCESSOR = True
 except ImportError as e:
     HAS_PROCESSOR = False
+    PROCESSOR_VERSION = None
     print(f"⚠️  Warning: Could not import processor: {e}")
 
 # AI-enhanced processor (optional)
@@ -113,7 +114,8 @@ async def startup_event():
     else:
         print("║  rawpy:      NOT INSTALLED ✗  (RAW files disabled)        ║")
     if HAS_PROCESSOR:
-        print("║  Processor:  Ready      ✓                                   ║")
+        version_str = PROCESSOR_VERSION if PROCESSOR_VERSION else "Ready"
+        print(f"║  Processor:  {version_str:<10} ✓                                   ║")
     else:
         print("║  Processor:  NOT FOUND  ✗                                   ║")
     print("╠══════════════════════════════════════════════════════════════╣")
@@ -379,6 +381,96 @@ def merge_brackets_laplacian(images: List[np.ndarray], levels: int = 6) -> np.nd
     return result
 
 
+def merge_brackets_middle_base(images: List[np.ndarray]) -> np.ndarray:
+    """
+    Professional real estate fusion: Middle exposure as base (neutral balance).
+
+    Based on industry research:
+    - Middle exposure provides balanced starting point (no blown highlights, no crushed shadows)
+    - Blend BRIGHT image into: dark areas, shadows (for detail)
+    - Blend DARK image into: light bulbs and glow areas (for fixture detail)
+
+    No hard-edged spatial masks - only luminosity-based blending for natural results.
+    """
+    if len(images) == 1:
+        return images[0]
+
+    # Ensure all images same size
+    base_shape = images[0].shape[:2]
+    resized = []
+    for img in images:
+        if img.shape[:2] != base_shape:
+            img = cv2.resize(img, (base_shape[1], base_shape[0]))
+        resized.append(img)
+
+    # Sort by average brightness
+    brightness = [np.mean(img) for img in resized]
+    sorted_indices = np.argsort(brightness)  # Ascending (darkest first)
+
+    darkest = resized[sorted_indices[0]].astype(np.float32)
+    brightest = resized[sorted_indices[-1]].astype(np.float32)
+
+    # Middle exposure as base
+    if len(resized) >= 3:
+        middle_idx = sorted_indices[len(sorted_indices) // 2]
+        middle = resized[middle_idx].astype(np.float32)
+    else:
+        # If only 2 images, blend them 50/50 as "middle"
+        middle = (darkest + brightest) / 2
+
+    print(f"   Fusion: Middle base (balanced), bright for shadows, dark for lights")
+
+    # Start with middle exposure
+    result = middle.copy()
+
+    # Analyze middle image luminosity
+    middle_gray = cv2.cvtColor(middle.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+    bright_gray = cv2.cvtColor(brightest.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+    # =========================================================
+    # SHADOW/DARK AREA RECOVERY: Blend bright image aggressively
+    # =========================================================
+    # Where middle exposure is below midtone (<140), pull from bright image
+    # This ensures corridor and right side get lifted to match left
+    shadow_mask = np.clip((140 - middle_gray) / 100, 0, 1)  # Smooth ramp 40-140
+    shadow_mask = cv2.GaussianBlur(shadow_mask, (51, 51), 0)
+    shadow_mask = np.stack([shadow_mask] * 3, axis=-1)
+
+    # Strong blend of bright image into darker areas (65%)
+    result = result * (1 - shadow_mask * 0.65) + brightest * shadow_mask * 0.65
+
+    # =========================================================
+    # GLOBAL BRIGHTNESS: Heavy bright blend for even lighting
+    # =========================================================
+    # Push bright image hard to get uniform brightness across frame
+    global_lift = 0.78  # 78% bright image - bright across entire image
+    result = result * (1 - global_lift) + brightest * global_lift
+
+    # =========================================================
+    # LIGHT FIXTURE RECOVERY: Blend dark image into blown areas
+    # =========================================================
+    # Where middle exposure is very bright (>220), use dark image for detail
+    highlight_mask = np.clip((middle_gray - 210) / 45, 0, 1)
+    highlight_mask = cv2.GaussianBlur(highlight_mask, (31, 31), 0)
+    highlight_mask = np.stack([highlight_mask] * 3, axis=-1)
+
+    # Strong blend of dark image into highlights (70% for fixture detail)
+    result = result * (1 - highlight_mask * 0.70) + darkest * highlight_mask * 0.70
+
+    # =========================================================
+    # EXTREME HIGHLIGHT RECOVERY: Light bulbs specifically
+    # =========================================================
+    # Where bright image is completely blown (>250), definitely use dark
+    extreme_mask = np.clip((bright_gray - 245) / 10, 0, 1)
+    extreme_mask = cv2.GaussianBlur(extreme_mask, (21, 21), 0)
+    extreme_mask = np.stack([extreme_mask] * 3, axis=-1)
+
+    # Very strong blend for actual light sources (85%)
+    result = result * (1 - extreme_mask * 0.85) + darkest * extreme_mask * 0.85
+
+    return np.clip(result, 0, 255).astype(np.uint8)
+
+
 # ============================================
 # ROUTES
 # ============================================
@@ -416,7 +508,21 @@ async def health():
         "components": {
             "rawpy": {"installed": HAS_RAWPY, "version": RAWPY_VERSION},
             "opencv": {"installed": True, "version": CV2_VERSION},
-            "processor": {"installed": HAS_PROCESSOR},
+            "processor": {
+                "installed": HAS_PROCESSOR,
+                "version": PROCESSOR_VERSION,
+                "features": [
+                    "CLAHE tone mapping",
+                    "Laplacian pyramid fusion",
+                    "Cool white balance correction",
+                    "Shadow recovery",
+                    "S-curve contrast",
+                    "Non-local means denoising",
+                    "Bilateral edge smoothing",
+                    "Local contrast (clarity)",
+                    "LAB + HSV color boost",
+                ] if HAS_PROCESSOR else []
+            },
             "ai_processor": {"installed": HAS_AI_PROCESSOR, "note": "SAM + YOLOv8 + LaMa"},
         },
         "raw_formats_supported": len(RAW_EXTENSIONS) if HAS_RAWPY else 0,
@@ -537,8 +643,8 @@ async def process_images(
         # STEP 2: Merge brackets (if multiple images)
         # ==========================================
         if len(image_arrays) > 1:
-            print(f"   Merging {len(image_arrays)} brackets with Laplacian pyramid fusion...")
-            base_image = merge_brackets_laplacian(image_arrays)
+            print(f"   Merging {len(image_arrays)} brackets with middle-base fusion...")
+            base_image = merge_brackets_middle_base(image_arrays)
         else:
             base_image = image_arrays[0]
 

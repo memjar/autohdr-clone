@@ -17,6 +17,9 @@ Usage:
     result = processor.process(image)
 """
 
+# Version tracking for quality iterations
+PROCESSOR_VERSION = "v36"
+
 import cv2
 import numpy as np
 from dataclasses import dataclass, field
@@ -148,103 +151,65 @@ class AutoHDRProcessor:
 
     def apply_hdr_effect(self, image: np.ndarray, strength: float = 0.7) -> np.ndarray:
         """
-        HDR Tone Mapping - Real Estate Style (v11)
-        Based on research: CLAHE + bilateral filtering + improved shadow recovery
+        HDR Tone Mapping - Real Estate Style (v35)
+        CLEAN AND SIMPLE - no spatial masks, no filters, just natural processing.
         """
-        # ==========================================
-        # STEP 1: CLAHE ON LUMINANCE (key for floor recovery)
-        # ==========================================
-        # Convert to LAB, apply CLAHE to L channel only
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0]
-
-        # CLAHE - maximum for real estate (very bright shadows needed)
-        clahe = cv2.createCLAHE(clipLimit=4.0, tileGridSize=(8, 8))
-        l_enhanced = clahe.apply(l_channel)
-
-        # Blend: 80% CLAHE for maximum shadow lift
-        l_channel = cv2.addWeighted(l_channel, 0.20, l_enhanced, 0.80, 0)
-        lab[:, :, 0] = l_channel
-        result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-        img_float = result.astype(np.float32) / 255.0
+        img_float = image.astype(np.float32) / 255.0
 
         # ==========================================
-        # STEP 2: AGGRESSIVE COOL WHITE BALANCE
+        # STEP 1: NEUTRAL WHITE BALANCE
         # ==========================================
-        # Remove warm cast - push toward neutral/cool
-        img_float[:, :, 2] *= 0.92   # Red down 8%
-        img_float[:, :, 1] *= 0.97   # Green down 3%
-        img_float[:, :, 0] *= 1.06   # Blue up 6%
+        luminance = np.mean(img_float, axis=2)
+        max_ch = np.max(img_float, axis=2)
+        min_ch = np.min(img_float, axis=2)
+        saturation = (max_ch - min_ch) / (max_ch + 0.001)
 
-        luminance = cv2.cvtColor(np.clip(img_float, 0, 1).astype(np.float32), cv2.COLOR_BGR2GRAY)
+        # Find white surfaces
+        white_mask = (luminance > 0.70) & (saturation < 0.10)
 
-        # ==========================================
-        # STEP 3: ADAPTIVE SHADOW LIFTING
-        # ==========================================
-        # Stronger lift in darker areas (floor fix)
-        shadows = 1.0 - luminance
-        shadow_lift = np.power(shadows, 1.2) * 0.45 * strength
+        if white_mask.sum() > 500:
+            r_avg = np.mean(img_float[:,:,2][white_mask])
+            g_avg = np.mean(img_float[:,:,1][white_mask])
+            b_avg = np.mean(img_float[:,:,0][white_mask])
 
-        result = img_float.copy()
-        for i in range(3):
-            result[:, :, i] = result[:, :, i] + shadow_lift
+            # Normalize to make whites neutral
+            target = (r_avg + g_avg + b_avg) / 3
+            if r_avg > 0.01 and g_avg > 0.01 and b_avg > 0.01:
+                img_float[:,:,2] *= target / r_avg
+                img_float[:,:,1] *= target / g_avg
+                img_float[:,:,0] *= target / b_avg
 
-        # ==========================================
-        # STEP 4: AUTO LEVELS
-        # ==========================================
-        p_low = np.percentile(result, 0.2)
-        p_high = np.percentile(result, 99.6)
-        if p_high - p_low > 0.1:
-            result = (result - p_low) / (p_high - p_low)
+        img_float = np.clip(img_float, 0, 1)
 
         # ==========================================
-        # STEP 5: GAMMA + BRIGHTNESS (MAXIMUM for real estate)
+        # STEP 2: BRIGHTNESS LIFT (uniform, no spatial masks)
         # ==========================================
-        result = np.clip(result, 0, 1)
-        result = np.power(result, 0.65)  # Maximum gamma lift
-        result = result * 1.25 + 0.05    # Maximum brightness
+        # Stronger gamma for brighter output
+        img_float = np.power(img_float, 0.88)  # Brighter lift
 
         # ==========================================
-        # STEP 6: BILATERAL FILTER (edge-aware smoothing)
+        # STEP 3: LIGHT DENOISING
         # ==========================================
-        result_uint8 = np.clip(result * 255, 0, 255).astype(np.uint8)
-        # Bilateral preserves edges while smoothing tones
-        result_uint8 = cv2.bilateralFilter(result_uint8, 5, 40, 40)
-        result = result_uint8.astype(np.float32) / 255.0
+        result_uint8 = np.clip(img_float * 255, 0, 255).astype(np.uint8)
+        result_uint8 = cv2.fastNlMeansDenoisingColored(result_uint8, None, 5, 5, 7, 21)
 
         # ==========================================
-        # STEP 7: LOCAL CONTRAST (clarity)
+        # STEP 4: SELECTIVE COLOR (no spatial masks)
         # ==========================================
-        result = self._local_contrast(result, strength=0.28)
-
-        # ==========================================
-        # STEP 8: AGGRESSIVE WHITE PUSH
-        # ==========================================
-        # Find bright areas and push toward PURE white
-        result_lum = np.mean(result, axis=2)
-        white_mask = np.clip((result_lum - 0.60) / 0.40, 0, 1)  # Wider range
-
-        # Strong push to pure white
-        for i in range(3):
-            # Blend toward pure white (1.0)
-            result[:, :, i] = result[:, :, i] * (1 - white_mask * 0.5) + white_mask * 0.5
-            # Additional brightness push
-            result[:, :, i] = result[:, :, i] + white_mask * 0.10
-
-        # ==========================================
-        # STEP 9: COLOR BOOST (LAB + HSV)
-        # ==========================================
-        result_uint8 = np.clip(result * 255, 0, 255).astype(np.uint8)
-
-        lab = cv2.cvtColor(result_uint8, cv2.COLOR_BGR2LAB).astype(np.float32)
-        lab[:, :, 1] = 128 + (lab[:, :, 1] - 128) * 1.30
-        lab[:, :, 2] = 128 + (lab[:, :, 2] - 128) * 1.25
-        lab = np.clip(lab, 0, 255)
-        result_uint8 = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
-
         hsv = cv2.cvtColor(result_uint8, cv2.COLOR_BGR2HSV).astype(np.float32)
-        hsv[:, :, 1] = np.clip(hsv[:, :, 1] * 1.15, 0, 255)
+
+        # Blue baffles: boost saturation
+        blue_mask = (hsv[:,:,0] > 100) & (hsv[:,:,0] < 130) & (hsv[:,:,1] > 50)
+        hsv[:,:,1][blue_mask] = np.clip(hsv[:,:,1][blue_mask] * 1.15, 0, 255)
+
+        # Green plants: boost saturation
+        green_mask = (hsv[:,:,0] > 35) & (hsv[:,:,0] < 85) & (hsv[:,:,1] > 40)
+        hsv[:,:,1][green_mask] = np.clip(hsv[:,:,1][green_mask] * 1.15, 0, 255)
+
+        # Wood desks: slight warmth
+        wood_mask = (hsv[:,:,0] > 12) & (hsv[:,:,0] < 38) & (hsv[:,:,1] > 30)
+        hsv[:,:,1][wood_mask] = np.clip(hsv[:,:,1][wood_mask] * 1.10, 0, 255)
+
         result_uint8 = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
         return result_uint8
