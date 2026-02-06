@@ -228,6 +228,27 @@ class ProSettings:
     luma_denoise_strength: float = 0.4        # Gentle luma denoising (0-1)
     use_luminance_mask: bool = True           # Protect bright areas from over-denoising
 
+    # === HUMAN-CENTRIC PROCESSING (ARRI REVEAL / CIECAM02 Research) ===
+    use_perceptual_processing: bool = True    # Enable human-centric processing
+
+    # Contrast Sensitivity Function (CSF) - boost mid-frequencies
+    use_csf_contrast: bool = True             # CSF-aware contrast enhancement
+    csf_mid_boost: float = 0.15               # Mid-frequency contrast boost (0-0.3)
+
+    # Perceptual Brightness (separate Y/Cb/Cr curves)
+    use_perceptual_curves: bool = True        # Separate luma/chroma tone curves
+    luma_curve_strength: float = 0.2          # Luminance curve intensity
+    chroma_curve_strength: float = 0.1        # Chroma curve intensity
+
+    # Skin Tone Protection (0-50° hue range)
+    protect_skin_tones: bool = True           # Isolate and protect skin tones
+    skin_tone_boost: float = 0.05             # Subtle flattering boost
+
+    # Subject-Specific Processing
+    detect_subjects: bool = False             # Auto-detect sky/skin/vegetation
+    sky_enhancement: float = 0.0              # Sky-specific processing
+    vegetation_enhancement: float = 0.0       # Grass/plant boost
+
     # === HOLLYWOOD COLOR GRADING (Professional Colorist Techniques) ===
     use_hollywood_grading: bool = True        # Enable Hollywood-style color grading
 
@@ -642,7 +663,11 @@ class AutoHDRProProcessor:
         # ====== STAGE 11: MANUAL ADJUSTMENTS ======
         result = self._apply_adjustments(result)
 
-        # ====== STAGE 12: HOLLYWOOD COLOR GRADING (NEW) ======
+        # ====== STAGE 12: HUMAN-CENTRIC PROCESSING (NEW) ======
+        if self.settings.use_perceptual_processing:
+            result = self._apply_perceptual_processing(result)
+
+        # ====== STAGE 13: HOLLYWOOD COLOR GRADING ======
         if self.settings.use_hollywood_grading:
             result = self._apply_hollywood_grading(result)
 
@@ -2421,10 +2446,10 @@ class AutoHDRProProcessor:
         - chroma_noise: color noise estimation
         - recommendation: suggested strategy
         """
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
 
         # Laplacian operator to detect edges and noise
-        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F).astype(np.float64)
         laplacian_abs = np.abs(laplacian).flatten()
 
         # Robust noise estimation using MAD (Median Absolute Deviation)
@@ -2450,7 +2475,7 @@ class AutoHDRProProcessor:
             recommendation = 'very_aggressive'
 
         # Estimate chroma noise (color noise in blue/red channels)
-        b, g, r = cv2.split(image.astype(np.float32))
+        b, g, r = cv2.split(image)  # Keep as uint8 for Laplacian
         r_noise = np.std(cv2.Laplacian(r, cv2.CV_64F))
         g_noise = np.std(cv2.Laplacian(g, cv2.CV_64F))
         b_noise = np.std(cv2.Laplacian(b, cv2.CV_64F))
@@ -2649,6 +2674,177 @@ class AutoHDRProProcessor:
         if self.settings.denoise_preserve_detail and strength > 0.3:
             blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
             result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
+
+        return result
+
+    # ========================================================================
+    # HUMAN-CENTRIC PROCESSING (ARRI REVEAL / CIECAM02 / CSF Research)
+    # ========================================================================
+
+    def _apply_csf_contrast(self, image: np.ndarray) -> np.ndarray:
+        """
+        Contrast Sensitivity Function (CSF) aware enhancement.
+
+        Human eyes are most sensitive to mid-range spatial frequencies (4-8 cpd).
+        This boosts mid-frequency contrast disproportionately for maximum
+        perceptual impact.
+
+        Based on: Human Vision research, ARRI color science
+        """
+        boost = self.settings.csf_mid_boost
+
+        if boost <= 0:
+            return image
+
+        # Convert to LAB for luminance-only processing
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Multi-scale decomposition to target mid-frequencies
+        # Fine scale (high frequency) - edges, fine detail
+        fine = cv2.GaussianBlur(L, (0, 0), 1.0)
+        fine_detail = L - fine
+
+        # Medium scale (mid frequency) - THE perceptual sweet spot
+        medium = cv2.GaussianBlur(L, (0, 0), 4.0)
+        mid_detail = fine - medium
+
+        # Coarse scale (low frequency) - global brightness
+        coarse = cv2.GaussianBlur(L, (0, 0), 16.0)
+        coarse_detail = medium - coarse
+
+        # Boost mid-frequencies (4-8 cpd range) most strongly
+        # This is what makes images "pop" to human perception
+        L_enhanced = coarse + \
+                     coarse_detail * (1.0 + boost * 0.3) + \
+                     mid_detail * (1.0 + boost) + \
+                     fine_detail * (1.0 + boost * 0.5)
+
+        lab[:, :, 0] = np.clip(L_enhanced, 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_perceptual_curves(self, image: np.ndarray) -> np.ndarray:
+        """
+        Separate tone curves for luminance and chroma channels.
+
+        Key insight from ARRI: "Correctly reproduces perceptual brightness"
+        - Gamma curve describes human perception
+        - Red appears darker than green at same luminance
+        - Saturation affects perceived brightness
+
+        Applies S-curves separately to Y, Cb, Cr channels.
+        """
+        luma_str = self.settings.luma_curve_strength
+        chroma_str = self.settings.chroma_curve_strength
+
+        # Convert to YCrCb
+        ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb).astype(np.float32)
+        y, cr, cb = cv2.split(ycrcb)
+
+        # Normalize
+        y = y / 255.0
+        cr = (cr - 128) / 128.0  # Center around 0
+        cb = (cb - 128) / 128.0
+
+        # Apply S-curve to luminance (lift shadows, compress highlights)
+        if luma_str > 0:
+            # Soft S-curve: y' = y + strength * y * (1-y) * (2y - 1)
+            y_curve = y + luma_str * y * (1 - y) * (2 * y - 1) * 2
+            y = np.clip(y_curve, 0, 1)
+
+        # Apply subtle curve to chroma (boost saturation in midtones)
+        if chroma_str > 0:
+            # Midtone saturation boost
+            mid_mask = 4 * y * (1 - y)  # Bell curve centered at 0.5
+            cr = cr * (1 + chroma_str * mid_mask * 0.5)
+            cb = cb * (1 + chroma_str * mid_mask * 0.5)
+
+        # Reconstruct
+        y = y * 255
+        cr = np.clip(cr * 128 + 128, 0, 255)
+        cb = np.clip(cb * 128 + 128, 0, 255)
+
+        ycrcb = cv2.merge([y.astype(np.uint8), cr.astype(np.uint8), cb.astype(np.uint8)])
+        return cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
+
+    def _protect_skin_tones(self, image: np.ndarray) -> np.ndarray:
+        """
+        Skin tone isolation and protection.
+
+        Why this matters: Skin tones are the most scrutinized colors in photos.
+        Off-skin tones ruin entire shots, even if everything else is perfect.
+
+        Approach:
+        1. Isolate skin tones (hue 0-50°, warm tones)
+        2. Apply subtle flattering adjustments
+        3. Protect from over-saturation
+
+        Based on: ARRI's "More accurate & subtle color reproduction"
+        """
+        boost = self.settings.skin_tone_boost
+
+        if boost <= 0:
+            return image
+
+        # Convert to HSV for hue-based selection
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        h, s, v = cv2.split(hsv)
+
+        # Normalize hue to 0-1 range (OpenCV uses 0-180)
+        h_norm = h / 180.0
+
+        # Skin tone mask: hue range 0-50° (0.0-0.14 in normalized)
+        # Also include slight wrap-around for very red tones
+        skin_mask = np.zeros_like(h_norm)
+        skin_mask[(h_norm < 0.14) | (h_norm > 0.95)] = 1.0
+        skin_mask[(h_norm >= 0.14) & (h_norm < 0.17)] = 1.0 - (h_norm[(h_norm >= 0.14) & (h_norm < 0.17)] - 0.14) / 0.03
+
+        # Smooth the mask
+        skin_mask = cv2.GaussianBlur(skin_mask.astype(np.float32), (15, 15), 0)
+
+        # Also require reasonable saturation (not gray) and value (not too dark)
+        sat_mask = np.clip((s / 255.0 - 0.1) / 0.3, 0, 1)
+        val_mask = np.clip((v / 255.0 - 0.2) / 0.3, 0, 1)
+        skin_mask = skin_mask * sat_mask * val_mask
+
+        # Apply subtle flattering adjustments to skin areas
+        # Slight warmth (reduce hue toward red)
+        h_adj = h - skin_mask * 3  # Shift slightly toward red
+        h_adj = np.clip(h_adj, 0, 180)
+
+        # Subtle saturation boost (flattering)
+        s_adj = s + skin_mask * boost * 15
+        s_adj = np.clip(s_adj, 0, 255)
+
+        # Slight brightness lift (flattering)
+        v_adj = v + skin_mask * boost * 10
+        v_adj = np.clip(v_adj, 0, 255)
+
+        hsv_adj = cv2.merge([h_adj.astype(np.uint8), s_adj.astype(np.uint8), v_adj.astype(np.uint8)])
+        return cv2.cvtColor(hsv_adj, cv2.COLOR_HSV2BGR)
+
+    def _apply_perceptual_processing(self, image: np.ndarray) -> np.ndarray:
+        """
+        Complete human-centric processing pipeline.
+
+        Order based on ARRI REVEAL research:
+        1. CSF-aware contrast (perceptual impact)
+        2. Perceptual tone curves (Y/Cb/Cr separation)
+        3. Skin tone protection (most scrutinized)
+        """
+        result = image
+
+        # Step 1: CSF contrast enhancement
+        if self.settings.use_csf_contrast:
+            result = self._apply_csf_contrast(result)
+
+        # Step 2: Perceptual tone curves
+        if self.settings.use_perceptual_curves:
+            result = self._apply_perceptual_curves(result)
+
+        # Step 3: Skin tone protection
+        if self.settings.protect_skin_tones:
+            result = self._protect_skin_tones(result)
 
         return result
 
