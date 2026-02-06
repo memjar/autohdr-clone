@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "3.2.0"  # Added denoising for clean, grain-free output
+PROCESSOR_VERSION = "3.3.0"  # Added auto dodge/burn + 7-zone luminosity system
 
 
 # ============================================================================
@@ -116,6 +116,21 @@ class ProSettings:
     denoise_strength: float = 0.5          # 0-1, higher = more smoothing
     denoise_preserve_detail: bool = True   # Use edge-aware denoising
 
+    # === ADVANCED: Dodge & Burn (from Lightroom research) ===
+    auto_dodge_burn: bool = True           # Auto even out room lighting
+    dodge_shadows: float = 0.3             # Lift dark areas (0-1)
+    burn_highlights: float = 0.15          # Control bright spots (0-1)
+
+    # === ADVANCED: 7-Zone Luminosity System (Kuyper extended) ===
+    use_7_zone_system: bool = False        # Advanced zone control
+    zone_blacks: float = 0.0               # Zone 1-2 (L < 25)
+    zone_deep_shadows: float = 0.0         # Zone 2-3 (L 25-50)
+    # zone_shadows already defined          # Zone 3-4 (L 50-100)
+    # zone_midtones already defined         # Zone 5 (L 100-155)
+    zone_bright_midtones: float = 0.0      # Zone 6 (L 155-200)
+    # zone_highlights already defined       # Zone 7-8 (L 200-235)
+    zone_whites: float = 0.0               # Zone 9 (L > 235)
+
 
 # ============================================================================
 # MAIN PROCESSOR
@@ -184,8 +199,15 @@ class AutoHDRProProcessor:
         if self.settings.use_clahe:
             result = self._apply_clahe(result)
 
-        # ====== STAGE 7: LUMINOSITY ZONE ADJUSTMENTS (NEW) ======
-        result = self._apply_zone_adjustments(result)
+        # ====== STAGE 7: AUTO DODGE & BURN (NEW - from Lightroom research) ======
+        if self.settings.auto_dodge_burn:
+            result = self._auto_dodge_burn(result)
+
+        # ====== STAGE 8: LUMINOSITY ZONE ADJUSTMENTS ======
+        if self.settings.use_7_zone_system:
+            result = self._apply_7_zone_adjustments(result)
+        else:
+            result = self._apply_zone_adjustments(result)
 
         # ====== STAGE 8: MANUAL ADJUSTMENTS ======
         result = self._apply_adjustments(result)
@@ -1053,6 +1075,160 @@ class AutoHDRProProcessor:
         lab[:, :, 0] = np.clip(L_blended, 0, 255).astype(np.uint8)
 
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    def _auto_dodge_burn(self, image: np.ndarray) -> np.ndarray:
+        """
+        Automatic dodge & burn for even room lighting.
+
+        Dodge = lighten dark areas (like fill flash)
+        Burn = darken overly bright areas (like exposure control)
+
+        This technique is fundamental to professional interior photography,
+        creating the "well-lit room" look without actual lighting setup.
+        """
+        dodge_strength = self.settings.dodge_shadows
+        burn_strength = self.settings.burn_highlights
+
+        if dodge_strength <= 0 and burn_strength <= 0:
+            return image
+
+        # Convert to LAB for luminance-only processing
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Calculate local brightness map (regional lighting analysis)
+        local_brightness = cv2.GaussianBlur(L, (0, 0), 40)
+
+        # Global statistics
+        global_mean = np.mean(L)
+        target_brightness = max(global_mean, 140)  # Aim for well-lit room
+
+        # ====== DODGE: Lift dark areas ======
+        if dodge_strength > 0:
+            # Identify regions darker than target
+            dark_deviation = target_brightness - local_brightness
+            dark_regions = np.maximum(dark_deviation, 0)
+
+            # Create dodge mask with smooth falloff
+            # More lift for darker areas, less for moderately dark
+            dodge_intensity = np.power(dark_regions / 100, 0.8) * dodge_strength
+
+            # Shadow protection: don't amplify noise in very dark areas
+            shadow_knee = np.clip(L / 25, 0, 1)
+            dodge_intensity *= shadow_knee
+
+            # Apply dodge (lift shadows)
+            dodge_amount = dodge_intensity * 40  # Max ~40 L units lift
+            L = L + dodge_amount
+
+        # ====== BURN: Control bright spots ======
+        if burn_strength > 0:
+            # Identify regions brighter than target
+            bright_deviation = local_brightness - target_brightness
+            bright_regions = np.maximum(bright_deviation, 0)
+
+            # Create burn mask - gentle control, not aggressive
+            burn_intensity = np.power(bright_regions / 80, 0.7) * burn_strength
+
+            # Highlight protection: preserve some brightness
+            highlight_knee = np.clip((255 - L) / 50, 0, 1)
+            burn_intensity *= highlight_knee
+
+            # Apply burn (reduce highlights)
+            burn_amount = burn_intensity * 25  # Max ~25 L units reduction
+            L = L - burn_amount
+
+        lab[:, :, 0] = np.clip(L, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_7_zone_adjustments(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply 7-zone luminosity adjustments (extended Kuyper technique).
+
+        Seven zones for precise control:
+        - Zone 1-2: Blacks (L < 25)
+        - Zone 2-3: Deep Shadows (L 25-50)
+        - Zone 3-4: Shadows (L 50-100)
+        - Zone 5: Midtones (L 100-155)
+        - Zone 6: Bright Midtones (L 155-200)
+        - Zone 7-8: Highlights (L 200-235)
+        - Zone 9: Whites (L > 235)
+
+        This provides much finer control than the basic 3-zone system,
+        allowing professional-level tonal adjustments.
+        """
+        # Check if any adjustments needed
+        has_adjustments = (
+            self.settings.zone_blacks != 0 or
+            self.settings.zone_deep_shadows != 0 or
+            self.settings.zone_shadows != 0 or
+            self.settings.zone_midtones != 0 or
+            self.settings.zone_bright_midtones != 0 or
+            self.settings.zone_highlights != 0 or
+            self.settings.zone_whites != 0
+        )
+
+        if not has_adjustments:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Create masks for each zone using Gaussian falloff
+        # This creates smooth transitions between zones
+
+        # Zone 1-2: Blacks (center=12, width=15)
+        blacks_mask = self._create_zone_mask(L, center=12, width=15)
+
+        # Zone 2-3: Deep Shadows (center=37, width=18)
+        deep_shadows_mask = self._create_zone_mask(L, center=37, width=18)
+
+        # Zone 3-4: Shadows (center=75, width=30)
+        shadows_mask = self._create_zone_mask(L, center=75, width=30)
+
+        # Zone 5: Midtones (center=127, width=35)
+        midtones_mask = self._create_zone_mask(L, center=127, width=35)
+
+        # Zone 6: Bright Midtones (center=177, width=28)
+        bright_mids_mask = self._create_zone_mask(L, center=177, width=28)
+
+        # Zone 7-8: Highlights (center=217, width=22)
+        highlights_mask = self._create_zone_mask(L, center=217, width=22)
+
+        # Zone 9: Whites (center=245, width=12)
+        whites_mask = self._create_zone_mask(L, center=245, width=12)
+
+        # Apply adjustments to each zone
+        # Scale: -1 to +1 maps to -25 to +25 L units
+        scale = 25
+
+        L_adjusted = L.copy()
+
+        if self.settings.zone_blacks != 0:
+            L_adjusted += blacks_mask * self.settings.zone_blacks * scale
+
+        if self.settings.zone_deep_shadows != 0:
+            L_adjusted += deep_shadows_mask * self.settings.zone_deep_shadows * scale
+
+        if self.settings.zone_shadows != 0:
+            L_adjusted += shadows_mask * self.settings.zone_shadows * scale
+
+        if self.settings.zone_midtones != 0:
+            L_adjusted += midtones_mask * self.settings.zone_midtones * scale
+
+        if self.settings.zone_bright_midtones != 0:
+            L_adjusted += bright_mids_mask * self.settings.zone_bright_midtones * scale
+
+        if self.settings.zone_highlights != 0:
+            L_adjusted += highlights_mask * self.settings.zone_highlights * scale
+
+        if self.settings.zone_whites != 0:
+            L_adjusted += whites_mask * self.settings.zone_whites * scale
+
+        lab[:, :, 0] = np.clip(L_adjusted, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def _apply_zone_adjustments(self, image: np.ndarray) -> np.ndarray:
         """
