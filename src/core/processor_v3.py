@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "4.0.0"  # Multi-scenario architecture with adaptive parameters
+PROCESSOR_VERSION = "4.1.0"  # Added S-curve + multi-level luminosity masks (Kuyper)
 
 
 # ============================================================================
@@ -929,6 +929,121 @@ class AutoHDRProProcessor:
         result = 0.5 + curved * 0.5
 
         return L * (1 - amount) + result * amount
+
+    def _apply_s_curve(self, image: np.ndarray, strength: float = 0.3) -> np.ndarray:
+        """
+        Professional S-Curve contrast enhancement (Lightroom technique).
+
+        The S-curve is THE most common contrast technique:
+        - Control points at 25% and 75% marks
+        - Drag lower point DOWN (darken shadows)
+        - Drag upper point UP (brighten highlights)
+        - Creates visual pop by increasing dynamic range
+
+        Args:
+            strength: 0-1, how aggressive the S-curve is
+        """
+        if strength <= 0:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0] / 255.0  # Normalize to 0-1
+
+        # S-curve: darken shadows at 25%, brighten highlights at 75%
+        # Using cubic Bezier approximation
+
+        # Shadow compression (L < 0.5)
+        shadow_mask = L < 0.5
+        shadow_adjust = np.where(
+            shadow_mask,
+            L - (L * (0.5 - L) * strength * 0.4),  # Darken shadows
+            L
+        )
+
+        # Highlight lift (L > 0.5)
+        highlight_mask = L > 0.5
+        L_adjusted = np.where(
+            highlight_mask,
+            shadow_adjust + ((1 - shadow_adjust) * (shadow_adjust - 0.5) * strength * 0.4),  # Brighten highlights
+            shadow_adjust
+        )
+
+        lab[:, :, 0] = np.clip(L_adjusted * 255, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _create_multilevel_luminosity_masks(self, L: np.ndarray) -> dict:
+        """
+        Create Tony Kuyper's multi-level luminosity masks.
+
+        This is THE professional technique for precision tonal control:
+        - Lights 1, 2, 3 (progressively brighter selections)
+        - Darks 1, 2, 3 (progressively darker selections)
+        - Midtones (intersection of what's not lights or darks)
+
+        Returns dict with all masks for flexible processing.
+        """
+        L_norm = L / 255.0
+
+        masks = {}
+
+        # Lights masks (progressively brighter)
+        masks['lights_1'] = np.clip((L_norm - 0.5) / 0.5, 0, 1)      # L > 128
+        masks['lights_2'] = np.clip((L_norm - 0.75) / 0.25, 0, 1)    # L > 191
+        masks['lights_3'] = np.clip((L_norm - 0.875) / 0.125, 0, 1)  # L > 223
+
+        # Darks masks (progressively darker)
+        masks['darks_1'] = np.clip((0.5 - L_norm) / 0.5, 0, 1)       # L < 128
+        masks['darks_2'] = np.clip((0.25 - L_norm) / 0.25, 0, 1)     # L < 64
+        masks['darks_3'] = np.clip((0.125 - L_norm) / 0.125, 0, 1)   # L < 32
+
+        # Midtones (what's not in lights or darks)
+        masks['midtones'] = 1.0 - masks['lights_1'] - masks['darks_1']
+        masks['midtones'] = np.clip(masks['midtones'], 0, 1)
+
+        return masks
+
+    def _apply_luminosity_adjustments(
+        self,
+        image: np.ndarray,
+        lights_adjust: float = 0.0,
+        darks_adjust: float = 0.0,
+        midtones_adjust: float = 0.0
+    ) -> np.ndarray:
+        """
+        Apply Lightroom-style luminosity adjustments using Kuyper masks.
+
+        This is more sophisticated than simple zone adjustments:
+        - Uses true luminosity masks with smooth transitions
+        - Prevents halos by respecting tonal relationships
+        - Mimics professional dodging/burning workflow
+        """
+        if lights_adjust == 0 and darks_adjust == 0 and midtones_adjust == 0:
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Create multi-level masks
+        masks = self._create_multilevel_luminosity_masks(L)
+
+        # Apply adjustments (scale: -1 to +1 maps to -40 to +40 L units)
+        scale = 40
+
+        if lights_adjust != 0:
+            # Use Lights 1 mask for broad highlight control
+            L = L + masks['lights_1'] * lights_adjust * scale
+
+        if darks_adjust != 0:
+            # Use Darks 1 mask for broad shadow control
+            L = L + masks['darks_1'] * darks_adjust * scale
+
+        if midtones_adjust != 0:
+            L = L + masks['midtones'] * midtones_adjust * scale
+
+        lab[:, :, 0] = np.clip(L, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
 
     def _boost_contrast_intense(self, image: np.ndarray) -> np.ndarray:
         """
