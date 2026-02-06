@@ -30,7 +30,8 @@ export async function POST(request: NextRequest) {
 
     // Get uploaded images
     const imageFiles: File[] = []
-    for (const [key, value] of formData.entries()) {
+    const entries = Array.from(formData.entries())
+    for (const [key, value] of entries) {
       if (key === 'images' && value instanceof File) {
         imageFiles.push(value)
       }
@@ -56,7 +57,7 @@ export async function POST(request: NextRequest) {
       processedBuffer = await processHDR(buffers, { brightness, contrast, vibrance, whiteBalance })
     }
 
-    return new NextResponse(processedBuffer, {
+    return new NextResponse(new Uint8Array(processedBuffer), {
       headers: {
         'Content-Type': 'image/jpeg',
         'Content-Disposition': `attachment; filename="autohdr_${Date.now()}.jpg"`,

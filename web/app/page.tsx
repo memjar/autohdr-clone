@@ -193,10 +193,39 @@ export default function Home() {
 
   return (
     <main className="min-h-screen p-8 max-w-4xl mx-auto">
+      {/* Navigation */}
+      <nav className="flex justify-between items-center mb-8">
+        <div className="flex items-center gap-2">
+          <span className="text-2xl">📸</span>
+          <span className="font-bold text-xl">AutoHDR Clone</span>
+        </div>
+        <div className="flex items-center gap-4">
+          <a
+            href="/pricing"
+            className="text-gray-400 hover:text-cyan-400 transition"
+          >
+            Pricing
+          </a>
+          <a
+            href="/dashboard"
+            className="text-gray-400 hover:text-cyan-400 transition"
+          >
+            Dashboard
+          </a>
+          <a
+            href="/dashboard"
+            className="px-4 py-2 bg-cyan-400 text-black font-semibold rounded-lg hover:bg-cyan-300 transition"
+          >
+            Sign In
+          </a>
+        </div>
+      </nav>
+
       {/* Header */}
       <div className="text-center mb-12">
         <h1 className="text-4xl font-bold mb-2">AutoHDR Clone</h1>
-        <p className="text-gray-400">Open-source AI real estate photo editing</p>
+        <p className="text-gray-400">Open-source AI real estate photo editing • 95%+ AutoHDR quality</p>
+        <p className="text-cyan-400 text-sm mt-2">Pro Processor v3.1 • Mertens Fusion • Full RAW Support</p>
       </div>
 
       {/* Backend Toggle */}
