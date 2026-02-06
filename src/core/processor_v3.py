@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "3.1.0"  # Added brightness equalization, CLAHE, zone adjustments
+PROCESSOR_VERSION = "3.2.0"  # Added denoising for clean, grain-free output
 
 
 # ============================================================================
@@ -110,6 +110,11 @@ class ProSettings:
 
     # Advanced white balance
     wb_method: Literal['gray_world', 'white_patch', 'combined'] = 'combined'
+
+    # === DENOISING (for clean, grain-free output) ===
+    denoise: bool = True
+    denoise_strength: float = 0.5          # 0-1, higher = more smoothing
+    denoise_preserve_detail: bool = True   # Use edge-aware denoising
 
 
 # ============================================================================
@@ -203,7 +208,11 @@ class AutoHDRProProcessor:
         if self.settings.declutter:
             result = self._declutter(result)
 
-        # ====== STAGE 10: TWILIGHT ======
+        # ====== STAGE 10: DENOISING (NEW) ======
+        if self.settings.denoise:
+            result = self._denoise_image(result)
+
+        # ====== STAGE 11: TWILIGHT ======
         if self.settings.twilight:
             result = self._apply_twilight(result, self.settings.twilight)
 
@@ -1343,6 +1352,80 @@ class AutoHDRProProcessor:
     def _declutter(self, image: np.ndarray) -> np.ndarray:
         """Subtle smoothing to reduce visual clutter."""
         return cv2.bilateralFilter(image, 9, 55, 55)
+
+    def _denoise_image(self, image: np.ndarray) -> np.ndarray:
+        """
+        Professional denoising for clean, grain-free output.
+
+        Uses multiple techniques:
+        1. Non-local means denoising (best quality)
+        2. Bilateral filter for edge preservation
+        3. Selective denoising (more in shadows where noise is visible)
+
+        This removes the grain/noise that can appear after HDR processing,
+        especially in shadow areas that were lifted.
+        """
+        strength = self.settings.denoise_strength
+
+        if strength <= 0:
+            return image
+
+        # Calculate denoising parameters based on strength
+        # h parameter for Non-local means (higher = more denoising)
+        h_luminance = 3 + strength * 7  # Range: 3-10
+        h_color = 3 + strength * 7
+
+        if self.settings.denoise_preserve_detail:
+            # Method 1: Non-local means (best quality, slower)
+            # Works in LAB space for better results
+            denoised = cv2.fastNlMeansDenoisingColored(
+                image,
+                None,
+                h_luminance,  # h (luminance strength)
+                h_color,      # hColor (color strength)
+                7,            # templateWindowSize
+                21            # searchWindowSize
+            )
+
+            # Blend based on luminance - denoise shadows more than highlights
+            # Noise is more visible in shadows
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+
+            # Shadow mask: more denoising in dark areas
+            shadow_weight = np.power(1.0 - gray, 1.5)
+            shadow_weight = cv2.GaussianBlur(shadow_weight, (15, 15), 0)
+
+            # Highlight areas: less denoising to preserve detail
+            highlight_weight = 1.0 - shadow_weight * 0.5
+
+            # Create blend mask (3 channel)
+            blend_mask = np.stack([
+                0.3 + shadow_weight * 0.5,  # More denoising in shadows
+                0.3 + shadow_weight * 0.5,
+                0.3 + shadow_weight * 0.5
+            ], axis=-1)
+
+            # Blend original with denoised
+            result = (image.astype(np.float32) * (1 - blend_mask) +
+                     denoised.astype(np.float32) * blend_mask)
+
+            result = np.clip(result, 0, 255).astype(np.uint8)
+
+        else:
+            # Method 2: Simple bilateral filter (faster, still good)
+            d = 9  # Diameter
+            sigma_color = 50 + strength * 50  # 50-100
+            sigma_space = 50 + strength * 50
+
+            result = cv2.bilateralFilter(image, d, sigma_color, sigma_space)
+
+        # Optional: Light sharpening to recover any lost detail
+        if self.settings.denoise_preserve_detail and strength > 0.3:
+            # Very subtle unsharp mask
+            blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
+            result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
+
+        return result
 
 
 # ============================================================================
