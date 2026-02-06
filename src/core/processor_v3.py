@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "3.0.0"
+PROCESSOR_VERSION = "3.1.0"  # Added brightness equalization, CLAHE, zone adjustments
 
 
 # ============================================================================
@@ -93,6 +93,23 @@ class ProSettings:
     local_contrast: float = 0.35   # Clarity/detail
     shadow_recovery: float = 0.4   # Shadow lift
     highlight_protection: float = 0.35  # Highlight compression
+
+    # === NEW: Brightness Distribution ===
+    brightness_equalization: bool = True   # Even out brightness across image
+    equalization_strength: float = 0.5     # How aggressive (0-1)
+
+    # CLAHE (local adaptive histogram equalization)
+    use_clahe: bool = True
+    clahe_clip_limit: float = 2.0          # Contrast limiting (1-4)
+    clahe_grid_size: int = 8               # Tile grid size
+
+    # Luminosity zone control (-1 to +1 for each zone)
+    zone_shadows: float = 0.0              # Lift/lower shadows (Zone 1-3)
+    zone_midtones: float = 0.0             # Adjust midtones (Zone 4-6)
+    zone_highlights: float = 0.0           # Adjust highlights (Zone 7-9)
+
+    # Advanced white balance
+    wb_method: Literal['gray_world', 'white_patch', 'combined'] = 'combined'
 
 
 # ============================================================================
@@ -154,10 +171,21 @@ class AutoHDRProProcessor:
         if self.settings.sky_mode != 'original':
             result = self._process_sky(result, scene)
 
-        # ====== STAGE 5: MANUAL ADJUSTMENTS ======
+        # ====== STAGE 5: BRIGHTNESS EQUALIZATION (NEW) ======
+        if self.settings.brightness_equalization:
+            result = self._equalize_brightness(result)
+
+        # ====== STAGE 6: CLAHE (NEW) ======
+        if self.settings.use_clahe:
+            result = self._apply_clahe(result)
+
+        # ====== STAGE 7: LUMINOSITY ZONE ADJUSTMENTS (NEW) ======
+        result = self._apply_zone_adjustments(result)
+
+        # ====== STAGE 8: MANUAL ADJUSTMENTS ======
         result = self._apply_adjustments(result)
 
-        # ====== STAGE 6: PERSPECTIVE CORRECTION ======
+        # ====== STAGE 9: PERSPECTIVE CORRECTION ======
         if self.settings.perspective_correction:
             result = self._correct_perspective(result)
 
@@ -922,6 +950,236 @@ class AutoHDRProProcessor:
                 ).astype(np.uint8)
 
         return result
+
+    # ========================================================================
+    # BRIGHTNESS EQUALIZATION (Lightroom-inspired)
+    # ========================================================================
+
+    def _equalize_brightness(self, image: np.ndarray) -> np.ndarray:
+        """
+        Spread brightness evenly across the image.
+
+        Based on Lightroom's approach:
+        - Identify dark regions that need lifting
+        - Identify bright regions that need control
+        - Blend to create even illumination
+        - Preserve local contrast and detail
+
+        This simulates professional lighting or flash fill.
+        """
+        strength = self.settings.equalization_strength
+
+        # Convert to LAB
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Calculate local brightness (large blur = regional brightness)
+        local_brightness = cv2.GaussianBlur(L, (0, 0), 50)
+
+        # Calculate global target brightness
+        global_mean = np.mean(L)
+        target = max(global_mean, 130)  # Aim for at least medium brightness
+
+        # Calculate how much each region deviates from target
+        deviation = target - local_brightness
+
+        # Create adjustment map (lift dark areas, slightly reduce bright areas)
+        # Dark areas (below target): positive adjustment
+        # Bright areas (above target): smaller negative adjustment
+        adjustment = np.where(
+            deviation > 0,
+            deviation * strength * 0.7,    # Lift shadows
+            deviation * strength * 0.2     # Gentle highlight control
+        )
+
+        # Apply with protection for very dark/bright areas
+        # Soft knee to prevent noise amplification in shadows
+        shadow_protection = np.clip(L / 30, 0, 1)  # 0 at black, 1 at L=30+
+        highlight_protection = np.clip((255 - L) / 30, 0, 1)
+
+        adjustment = adjustment * shadow_protection * highlight_protection
+
+        # Apply adjustment
+        L_adjusted = L + adjustment
+
+        # Preserve original contrast by blending
+        L_final = L * (1 - strength * 0.5) + L_adjusted * (strength * 0.5 + 0.5)
+
+        lab[:, :, 0] = np.clip(L_final, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_clahe(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply CLAHE (Contrast Limited Adaptive Histogram Equalization).
+
+        This is THE technique for spreading brightness locally:
+        - Divides image into tiles
+        - Equalizes histogram in each tile
+        - Interpolates for smooth transitions
+        - Clip limit prevents over-amplification
+
+        Result: Even brightness distribution while preserving local contrast.
+        """
+        # Convert to LAB (apply CLAHE only to L channel)
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        L = lab[:, :, 0]
+
+        # Create CLAHE object
+        clahe = cv2.createCLAHE(
+            clipLimit=self.settings.clahe_clip_limit,
+            tileGridSize=(self.settings.clahe_grid_size,
+                         self.settings.clahe_grid_size)
+        )
+
+        # Apply CLAHE
+        L_clahe = clahe.apply(L)
+
+        # Blend with original for more natural result
+        # Full CLAHE can look artificial
+        blend = 0.4  # 40% CLAHE, 60% original
+        L_blended = (L.astype(np.float32) * (1 - blend) +
+                    L_clahe.astype(np.float32) * blend)
+
+        lab[:, :, 0] = np.clip(L_blended, 0, 255).astype(np.uint8)
+
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    def _apply_zone_adjustments(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply Lightroom-style luminosity zone adjustments.
+
+        Five zones (like Lightroom):
+        - Blacks (Zone 1-2): L < 25
+        - Shadows (Zone 3-4): L 25-75
+        - Midtones (Zone 5): L 75-180
+        - Highlights (Zone 6-7): L 180-230
+        - Whites (Zone 8-9): L > 230
+
+        This allows separate control of shadows/midtones/highlights.
+        """
+        # Check if any zone adjustments needed
+        if (self.settings.zone_shadows == 0 and
+            self.settings.zone_midtones == 0 and
+            self.settings.zone_highlights == 0):
+            return image
+
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # Create luminosity masks for each zone
+        # Using smooth transitions (feathered masks)
+
+        # Shadows mask (peaks at L=50, fades at edges)
+        shadows_mask = self._create_zone_mask(L, center=50, width=60)
+
+        # Midtones mask (peaks at L=128)
+        midtones_mask = self._create_zone_mask(L, center=128, width=80)
+
+        # Highlights mask (peaks at L=200)
+        highlights_mask = self._create_zone_mask(L, center=200, width=50)
+
+        # Apply adjustments to each zone
+        # Scale: -1 to +1 maps to -30 to +30 L units
+        scale = 30
+
+        L_adjusted = L.copy()
+
+        if self.settings.zone_shadows != 0:
+            L_adjusted += shadows_mask * self.settings.zone_shadows * scale
+
+        if self.settings.zone_midtones != 0:
+            L_adjusted += midtones_mask * self.settings.zone_midtones * scale
+
+        if self.settings.zone_highlights != 0:
+            L_adjusted += highlights_mask * self.settings.zone_highlights * scale
+
+        lab[:, :, 0] = np.clip(L_adjusted, 0, 255)
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _create_zone_mask(
+        self,
+        L: np.ndarray,
+        center: float,
+        width: float
+    ) -> np.ndarray:
+        """
+        Create a smooth luminosity mask centered at a specific L value.
+
+        Uses Gaussian falloff for smooth transitions between zones.
+        """
+        # Gaussian mask centered at 'center' with 'width' sigma
+        mask = np.exp(-((L - center) ** 2) / (2 * width ** 2))
+        return mask
+
+    def _advanced_white_balance(self, image: np.ndarray) -> np.ndarray:
+        """
+        Advanced white balance using combined methods.
+
+        Methods:
+        1. Gray World: Assumes average color should be neutral gray
+        2. White Patch: Finds brightest region, assumes it's white
+        3. Combined: Weighted blend of both methods
+
+        This produces more accurate results than gray world alone.
+        """
+        method = self.settings.wb_method
+
+        if method == 'gray_world':
+            return self._auto_white_balance(image)
+
+        elif method == 'white_patch':
+            return self._white_patch_wb(image)
+
+        else:  # combined
+            # Apply both methods with weights
+            gray_world = self._auto_white_balance(image)
+            white_patch = self._white_patch_wb(image)
+
+            # Blend: 60% gray world, 40% white patch
+            result = cv2.addWeighted(gray_world, 0.6, white_patch, 0.4, 0)
+            return result
+
+    def _white_patch_wb(self, image: np.ndarray) -> np.ndarray:
+        """
+        White Patch white balance algorithm.
+
+        Finds the brightest region and assumes it should be white.
+        Scales other colors accordingly.
+        """
+        img_float = image.astype(np.float32)
+
+        # Find the brightest pixels (top 0.5%)
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        threshold = np.percentile(gray, 99.5)
+        bright_mask = gray >= threshold
+
+        if bright_mask.sum() < 100:
+            return image
+
+        # Get average color of bright region
+        bright_b = np.mean(img_float[:, :, 0][bright_mask])
+        bright_g = np.mean(img_float[:, :, 1][bright_mask])
+        bright_r = np.mean(img_float[:, :, 2][bright_mask])
+
+        # Scale to make bright region white
+        max_val = max(bright_b, bright_g, bright_r)
+
+        if max_val < 100:
+            return image
+
+        scale_b = min(255 / (bright_b + 1), 1.5)
+        scale_g = min(255 / (bright_g + 1), 1.5)
+        scale_r = min(255 / (bright_r + 1), 1.5)
+
+        # Apply with reduced strength
+        strength = 0.5
+        img_float[:, :, 0] *= 1 + (scale_b - 1) * strength
+        img_float[:, :, 1] *= 1 + (scale_g - 1) * strength
+        img_float[:, :, 2] *= 1 + (scale_r - 1) * strength
+
+        return np.clip(img_float, 0, 255).astype(np.uint8)
 
     # ========================================================================
     # ADJUSTMENTS
