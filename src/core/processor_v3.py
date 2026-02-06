@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "4.5.0"  # Hollywood color grading (color wheels, film S-curve, LUTs)
+PROCESSOR_VERSION = "4.6.0"  # Advanced denoising + luminance masking + human-centric processing
 
 
 # ============================================================================
@@ -219,6 +219,14 @@ class ProSettings:
 
     # === HISTOGRAM-BASED DYNAMIC PARAMETERS ===
     use_histogram_params: bool = True         # Auto-adjust based on histogram analysis
+
+    # === ADVANCED DENOISING (Topaz/DxO/Lightroom Techniques) ===
+    use_advanced_denoise: bool = True         # Enable professional denoising pipeline
+    denoise_analyze_noise: bool = True        # Auto-detect noise level
+    denoise_channel_specific: bool = True     # Separate luma/chroma denoising
+    chroma_denoise_strength: float = 0.8      # Aggressive chroma denoising (0-1)
+    luma_denoise_strength: float = 0.4        # Gentle luma denoising (0-1)
+    use_luminance_mask: bool = True           # Protect bright areas from over-denoising
 
     # === HOLLYWOOD COLOR GRADING (Professional Colorist Techniques) ===
     use_hollywood_grading: bool = True        # Enable Hollywood-style color grading
@@ -2399,75 +2407,246 @@ class AutoHDRProProcessor:
 
         return result
 
+    # ========================================================================
+    # ADVANCED DENOISING (Topaz/DxO/Lightroom Professional Techniques)
+    # ========================================================================
+
+    def _analyze_noise_level(self, image: np.ndarray) -> dict:
+        """
+        Estimate noise level using Laplacian method (Topaz Labs technique).
+
+        Returns noise profile with:
+        - noise_level: 0-1 scale
+        - noise_type: 'low', 'medium', 'high', 'extreme'
+        - chroma_noise: color noise estimation
+        - recommendation: suggested strategy
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32)
+
+        # Laplacian operator to detect edges and noise
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        laplacian_abs = np.abs(laplacian).flatten()
+
+        # Robust noise estimation using MAD (Median Absolute Deviation)
+        median = np.median(laplacian_abs)
+        mad = np.median(np.abs(laplacian_abs - median))
+        noise_estimate = mad / 0.6745  # Statistical constant for Gaussian
+
+        # Normalize to 0-1 (calibrated: 0=pristine, 1=extremely noisy)
+        noise_level = min(1.0, noise_estimate / 50)
+
+        # Determine noise type and recommendation
+        if noise_level < 0.15:
+            noise_type = 'low'
+            recommendation = 'light'
+        elif noise_level < 0.4:
+            noise_type = 'medium'
+            recommendation = 'moderate'
+        elif noise_level < 0.7:
+            noise_type = 'high'
+            recommendation = 'aggressive'
+        else:
+            noise_type = 'extreme'
+            recommendation = 'very_aggressive'
+
+        # Estimate chroma noise (color noise in blue/red channels)
+        b, g, r = cv2.split(image.astype(np.float32))
+        r_noise = np.std(cv2.Laplacian(r, cv2.CV_64F))
+        g_noise = np.std(cv2.Laplacian(g, cv2.CV_64F))
+        b_noise = np.std(cv2.Laplacian(b, cv2.CV_64F))
+        chroma_noise = (abs(r_noise - g_noise) + abs(b_noise - g_noise)) / 2
+
+        return {
+            'noise_level': noise_level,
+            'noise_type': noise_type,
+            'chroma_noise': min(1.0, chroma_noise / 30),
+            'recommendation': recommendation
+        }
+
+    def _channel_specific_denoise(self, image: np.ndarray,
+                                   luma_strength: float = 0.4,
+                                   chroma_strength: float = 0.8) -> np.ndarray:
+        """
+        Channel-specific denoising (Lightroom/Capture One technique).
+
+        Key insight: Human eyes are much more sensitive to luminance noise
+        than color noise. So we can aggressively denoise chroma without
+        visible artifacts.
+
+        Steps:
+        1. Convert RGB to YCrCb (luma + chroma)
+        2. Denoise luma gently (preserve detail)
+        3. Denoise chroma aggressively (remove color noise)
+        4. Convert back to RGB
+        """
+        # Convert to YCrCb
+        ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
+        y, cr, cb = cv2.split(ycrcb)
+
+        # Denoise luminance (Y) - gentle to preserve detail
+        if luma_strength > 0:
+            h_luma = 3 + luma_strength * 5  # Range 3-8
+            y_denoised = cv2.fastNlMeansDenoising(y, None, h_luma, 7, 21)
+        else:
+            y_denoised = y
+
+        # Denoise chroma (Cr, Cb) - aggressive (color noise is less visible)
+        if chroma_strength > 0:
+            h_chroma = 5 + chroma_strength * 10  # Range 5-15
+            cr_denoised = cv2.fastNlMeansDenoising(cr, None, h_chroma, 7, 21)
+            cb_denoised = cv2.fastNlMeansDenoising(cb, None, h_chroma, 7, 21)
+
+            # Additional bilateral filter on chroma for smoother results
+            sigma = 30 + chroma_strength * 40
+            cr_denoised = cv2.bilateralFilter(cr_denoised, 9, sigma, sigma)
+            cb_denoised = cv2.bilateralFilter(cb_denoised, 9, sigma, sigma)
+        else:
+            cr_denoised = cr
+            cb_denoised = cb
+
+        # Merge and convert back
+        ycrcb_denoised = cv2.merge([y_denoised, cr_denoised, cb_denoised])
+        return cv2.cvtColor(ycrcb_denoised, cv2.COLOR_YCrCb2BGR)
+
+    def _apply_luminance_mask_denoise(self, original: np.ndarray,
+                                       denoised: np.ndarray) -> np.ndarray:
+        """
+        Luminance masking - protect bright areas from over-denoising.
+
+        Why this matters:
+        - Noise is most visible in shadows
+        - Highlights (windows, lights) should preserve detail
+        - This makes denoising look natural, not "plastic"
+
+        The mask applies more denoising to shadows, less to highlights.
+        """
+        # Calculate luminance
+        gray = cv2.cvtColor(original, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+
+        # Create luminance-based blend mask
+        # More denoising in shadows (low luminance), less in highlights
+        shadow_weight = np.power(1.0 - gray, 1.5)  # Emphasize shadows
+        shadow_weight = cv2.GaussianBlur(shadow_weight, (21, 21), 0)
+
+        # Highlights get minimal denoising (preserve window detail)
+        highlight_protection = np.clip((gray - 0.7) / 0.3, 0, 1)
+        highlight_protection = cv2.GaussianBlur(highlight_protection, (15, 15), 0)
+
+        # Final blend: shadows get full denoising, highlights get minimal
+        blend = 0.3 + shadow_weight * 0.6 - highlight_protection * 0.4
+        blend = np.clip(blend, 0.1, 0.95)
+
+        # Expand to 3 channels
+        blend_3ch = np.stack([blend, blend, blend], axis=-1)
+
+        # Blend original with denoised
+        result = original.astype(np.float32) * (1 - blend_3ch) + \
+                 denoised.astype(np.float32) * blend_3ch
+
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    def _median_filter_artifacts(self, image: np.ndarray,
+                                  kernel_size: int = 3) -> np.ndarray:
+        """
+        Median filter for impulse noise and JPEG artifacts.
+
+        Effective for:
+        - Salt & pepper noise
+        - JPEG compression artifacts
+        - Banding patterns
+
+        Preserves edges better than Gaussian blur.
+        """
+        return cv2.medianBlur(image, kernel_size)
+
     def _denoise_image(self, image: np.ndarray) -> np.ndarray:
         """
-        Professional denoising for clean, grain-free output.
+        Professional denoising pipeline (Topaz/DxO/Lightroom quality).
 
-        Uses multiple techniques:
-        1. Non-local means denoising (best quality)
-        2. Bilateral filter for edge preservation
-        3. Selective denoising (more in shadows where noise is visible)
+        Pipeline:
+        1. Analyze noise level (adaptive strength)
+        2. Channel-specific denoising (luma vs chroma)
+        3. Luminance masking (protect highlights)
+        4. Optional median filter (remove artifacts)
+        5. Detail recovery sharpening
 
-        This removes the grain/noise that can appear after HDR processing,
-        especially in shadow areas that were lifted.
+        This removes grain/noise while preserving detail in highlights.
         """
         strength = self.settings.denoise_strength
 
         if strength <= 0:
             return image
 
-        # Calculate denoising parameters based on strength
-        # h parameter for Non-local means (higher = more denoising)
-        h_luminance = 3 + strength * 7  # Range: 3-10
+        # ====== ADVANCED DENOISING PIPELINE ======
+        if self.settings.use_advanced_denoise:
+
+            # Step 1: Analyze noise level (adaptive)
+            noise_profile = None
+            if self.settings.denoise_analyze_noise:
+                noise_profile = self._analyze_noise_level(image)
+                # Adjust strength based on detected noise
+                if noise_profile['noise_type'] == 'low':
+                    strength = min(strength, 0.3)
+                elif noise_profile['noise_type'] == 'high':
+                    strength = max(strength, 0.6)
+
+            # Step 2: Channel-specific denoising (luma vs chroma)
+            if self.settings.denoise_channel_specific:
+                luma_str = self.settings.luma_denoise_strength * strength
+                chroma_str = self.settings.chroma_denoise_strength * strength
+                denoised = self._channel_specific_denoise(image, luma_str, chroma_str)
+            else:
+                # Fallback to standard NLM
+                h = 3 + strength * 7
+                denoised = cv2.fastNlMeansDenoisingColored(image, None, h, h, 7, 21)
+
+            # Step 3: Apply luminance mask (protect highlights)
+            if self.settings.use_luminance_mask:
+                result = self._apply_luminance_mask_denoise(image, denoised)
+            else:
+                result = denoised
+
+            # Step 4: Optional median filter for artifacts (aggressive denoising)
+            if strength > 0.6:
+                result = self._median_filter_artifacts(result, 3)
+
+            # Step 5: Detail recovery sharpening
+            if strength > 0.3:
+                blurred = cv2.GaussianBlur(result, (0, 0), 0.8)
+                result = cv2.addWeighted(result, 1.08, blurred, -0.08, 0)
+
+            return result
+
+        # ====== LEGACY DENOISING (if advanced disabled) ======
+        h_luminance = 3 + strength * 7
         h_color = 3 + strength * 7
 
         if self.settings.denoise_preserve_detail:
-            # Method 1: Non-local means (best quality, slower)
-            # Works in LAB space for better results
             denoised = cv2.fastNlMeansDenoisingColored(
-                image,
-                None,
-                h_luminance,  # h (luminance strength)
-                h_color,      # hColor (color strength)
-                7,            # templateWindowSize
-                21            # searchWindowSize
+                image, None, h_luminance, h_color, 7, 21
             )
 
-            # Blend based on luminance - denoise shadows more than highlights
-            # Noise is more visible in shadows
             gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
-
-            # Shadow mask: more denoising in dark areas
             shadow_weight = np.power(1.0 - gray, 1.5)
             shadow_weight = cv2.GaussianBlur(shadow_weight, (15, 15), 0)
 
-            # Highlight areas: less denoising to preserve detail
-            highlight_weight = 1.0 - shadow_weight * 0.5
-
-            # Create blend mask (3 channel)
             blend_mask = np.stack([
-                0.3 + shadow_weight * 0.5,  # More denoising in shadows
+                0.3 + shadow_weight * 0.5,
                 0.3 + shadow_weight * 0.5,
                 0.3 + shadow_weight * 0.5
             ], axis=-1)
 
-            # Blend original with denoised
             result = (image.astype(np.float32) * (1 - blend_mask) +
                      denoised.astype(np.float32) * blend_mask)
-
             result = np.clip(result, 0, 255).astype(np.uint8)
 
         else:
-            # Method 2: Simple bilateral filter (faster, still good)
-            d = 9  # Diameter
-            sigma_color = 50 + strength * 50  # 50-100
+            d = 9
+            sigma_color = 50 + strength * 50
             sigma_space = 50 + strength * 50
-
             result = cv2.bilateralFilter(image, d, sigma_color, sigma_space)
 
-        # Optional: Light sharpening to recover any lost detail
         if self.settings.denoise_preserve_detail and strength > 0.3:
-            # Very subtle unsharp mask
             blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
             result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
 
