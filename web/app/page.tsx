@@ -203,6 +203,12 @@ export default function Home() {
         </div>
         <div className="flex items-center gap-4">
           <a
+            href="/about"
+            className="text-gray-400 hover:text-cyan-400 transition"
+          >
+            About
+          </a>
+          <a
             href="/pricing"
             className="text-gray-400 hover:text-cyan-400 transition"
           >
