@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "4.1.0"  # Added S-curve + multi-level luminosity masks (Kuyper)
+PROCESSOR_VERSION = "4.5.0"  # Hollywood color grading (color wheels, film S-curve, LUTs)
 
 
 # ============================================================================
@@ -201,6 +201,43 @@ class ProSettings:
     zone_grid_size: int = 4                # 4x4 grid for zone analysis
     adaptive_wb: bool = True               # Zone-aware white balance
     mixed_lighting_threshold: float = 500  # Color temp variance for mixed lighting
+
+    # === LIGHTROOM PRO TECHNIQUES ===
+    apply_s_curve: bool = True             # S-curve contrast enhancement
+    s_curve_strength: float = 0.25         # How aggressive (0-1)
+
+    # Kuyper luminosity adjustments (multi-level masks)
+    use_kuyper_masks: bool = False         # Enable advanced luminosity masking
+    kuyper_lights: float = 0.0             # Lights adjustment (-1 to +1)
+    kuyper_darks: float = 0.0              # Darks adjustment (-1 to +1)
+    kuyper_midtones: float = 0.0           # Midtones adjustment (-1 to +1)
+
+    # === TWO-TIER TONE MAPPING (AutoHDR Architecture) ===
+    use_two_tier_tone_mapping: bool = True    # Global + local tone mapping
+    two_tier_global_strength: float = 0.4     # Global curve strength (0-1)
+    two_tier_local_strength: float = 0.3      # Local contrast strength (0-1)
+
+    # === HISTOGRAM-BASED DYNAMIC PARAMETERS ===
+    use_histogram_params: bool = True         # Auto-adjust based on histogram analysis
+
+    # === HOLLYWOOD COLOR GRADING (Professional Colorist Techniques) ===
+    use_hollywood_grading: bool = True        # Enable Hollywood-style color grading
+
+    # Color Wheels (shadows/midtones/highlights color shifts)
+    use_color_wheels: bool = True
+    shadow_color_shift: Tuple[float, float] = (0.02, 0.01)   # (warmth, tint) - warm shadows
+    midtone_color_shift: Tuple[float, float] = (0.0, 0.0)    # Neutral midtones
+    highlight_color_shift: Tuple[float, float] = (-0.01, 0.02)  # Slightly cool highlights
+
+    # Hollywood S-Curve (film-style contrast)
+    use_hollywood_s_curve: bool = False       # Use Hollywood S-curve instead of basic
+    hollywood_shadow_lift: float = 0.1        # Film-style shadow lift
+    hollywood_midtone_contrast: float = 1.15  # Midtone punch
+    hollywood_highlight_compress: float = 0.08  # Highlight rolloff
+
+    # LUT Style (pre-built color grades)
+    lut_style: Optional[Literal['golden_hour', 'cinematic_cool', 'professional_clean', 'none']] = 'none'
+    lut_intensity: float = 0.5                # How strong the LUT effect (0-1)
 
 
 # ============================================================================
@@ -493,6 +530,11 @@ class AutoHDRProProcessor:
                 # Let analysis determine if we need more intensity
                 pass  # Keep user setting
 
+        # ====== STAGE 0.5: HISTOGRAM-BASED PARAMETER ADJUSTMENT ======
+        self._histogram_params = None
+        if self.settings.use_histogram_params:
+            self._histogram_params = self._histogram_based_parameters(image)
+
         # Auto-detect scene type
         if self.settings.scene_type == 'auto':
             scene = self._detect_scene_type(image)
@@ -517,10 +559,34 @@ class AutoHDRProProcessor:
         else:
             strength = self.settings.hdr_strength
 
+        # Apply histogram-based adjustments if available
+        if self._histogram_params:
+            # Adjust strength based on image needs
+            if self._histogram_params.get('needs_hdr_processing', False):
+                strength *= 1.1
+            if self._histogram_params.get('is_low_key', False):
+                strength *= 1.05  # Slight boost for dark images
+
         if self.settings.output_style == 'intense':
             strength *= 1.4  # More aggressive for intense mode
 
         result = self._apply_flambient_tone_mapping(result, strength)
+
+        # ====== STAGE 2.5: TWO-TIER TONE MAPPING (AutoHDR Architecture) ======
+        if self.settings.use_two_tier_tone_mapping:
+            global_str = self.settings.two_tier_global_strength
+            local_str = self.settings.two_tier_local_strength
+
+            # Adjust based on histogram analysis
+            if self._histogram_params:
+                # More global compression for high contrast images
+                if self._histogram_params.get('dynamic_range', 0) > 180:
+                    global_str *= 1.2
+                # More local boost for flat images
+                if self._histogram_params.get('contrast_boost', 0) > 0.15:
+                    local_str *= 1.15
+
+            result = self._two_tier_tone_mapping(result, global_str, local_str)
 
         # Intense mode: additional contrast boost
         if self.settings.output_style == 'intense':
@@ -552,10 +618,27 @@ class AutoHDRProProcessor:
         else:
             result = self._apply_zone_adjustments(result)
 
-        # ====== STAGE 8: MANUAL ADJUSTMENTS ======
+        # ====== STAGE 9: S-CURVE CONTRAST (Lightroom technique) ======
+        if self.settings.apply_s_curve:
+            result = self._apply_s_curve(result, self.settings.s_curve_strength)
+
+        # ====== STAGE 10: KUYPER LUMINOSITY MASKS (Advanced) ======
+        if self.settings.use_kuyper_masks:
+            result = self._apply_luminosity_adjustments(
+                result,
+                lights_adjust=self.settings.kuyper_lights,
+                darks_adjust=self.settings.kuyper_darks,
+                midtones_adjust=self.settings.kuyper_midtones
+            )
+
+        # ====== STAGE 11: MANUAL ADJUSTMENTS ======
         result = self._apply_adjustments(result)
 
-        # ====== STAGE 9: PERSPECTIVE CORRECTION ======
+        # ====== STAGE 12: HOLLYWOOD COLOR GRADING (NEW) ======
+        if self.settings.use_hollywood_grading:
+            result = self._apply_hollywood_grading(result)
+
+        # ====== STAGE 13: PERSPECTIVE CORRECTION ======
         if self.settings.perspective_correction:
             result = self._correct_perspective(result)
 
@@ -917,6 +1000,164 @@ class AutoHDRProProcessor:
         """Unsharp mask at specified scale."""
         blurred = cv2.GaussianBlur(img, (0, 0), sigma)
         return img + (img - blurred) * amount
+
+    # ========================================================================
+    # TWO-TIER TONE MAPPING (From AutoHDR Architecture Research)
+    # ========================================================================
+
+    def _two_tier_tone_mapping(self, image: np.ndarray, global_strength: float = 0.5,
+                                local_strength: float = 0.3) -> np.ndarray:
+        """
+        AutoHDR's Two-Tier Tone Mapping approach:
+
+        1. GLOBAL: Consistent brightness adjustment across all pixels
+        2. LOCAL: Analyze neighborhoods for local contrast enhancement
+
+        This combination prevents halos while maintaining natural contrast.
+        """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0]
+
+        # ====== TIER 1: GLOBAL TONE MAPPING ======
+        # Apply consistent gamma-like curve to all pixels
+        L_norm = L / 255.0
+
+        # Global tone curve (lift shadows, compress highlights)
+        # Using Reinhard-inspired global operator
+        L_global = L_norm / (1 + L_norm)
+        L_global = L_global * (1 + L_global / (0.8 ** 2))  # White point at 0.8
+
+        # Blend with original based on strength
+        L_tier1 = L_norm * (1 - global_strength) + L_global * global_strength
+
+        # ====== TIER 2: LOCAL TONE MAPPING ======
+        # Analyze neighborhoods for local contrast
+        # Using bilateral filter to preserve edges
+
+        L_uint8 = (L_tier1 * 255).astype(np.uint8)
+
+        # Local mean via large bilateral filter (edge-preserving)
+        local_mean = cv2.bilateralFilter(L_uint8, 15, 75, 75).astype(np.float32) / 255.0
+
+        # Local detail = difference from local mean
+        local_detail = L_tier1 - local_mean
+
+        # Boost local detail (increases local contrast)
+        L_local = local_mean + local_detail * (1 + local_strength)
+
+        # Blend tiers
+        L_final = np.clip(L_local * 255, 0, 255)
+        lab[:, :, 0] = L_final
+
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _gaussian_pyramid_decompose(self, image: np.ndarray, levels: int = 4) -> List[np.ndarray]:
+        """
+        Gaussian Pyramid Decomposition for multi-scale processing.
+
+        Creates a hierarchy of progressively smaller/blurrier versions:
+        - Level 0: Original resolution
+        - Level 1: 1/2 resolution
+        - Level 2: 1/4 resolution
+        - etc.
+
+        Used for: multi-scale tone mapping, detail extraction, frequency separation.
+        """
+        pyramid = [image]
+
+        current = image
+        for i in range(levels - 1):
+            # Downsample by 2x with Gaussian blur
+            current = cv2.pyrDown(current)
+            pyramid.append(current)
+
+        return pyramid
+
+    def _laplacian_pyramid_decompose(self, image: np.ndarray, levels: int = 4) -> List[np.ndarray]:
+        """
+        Laplacian Pyramid Decomposition (detail extraction).
+
+        Each level contains the DETAIL lost between Gaussian pyramid levels.
+        This allows separate processing of coarse and fine details.
+        """
+        gaussian_pyr = self._gaussian_pyramid_decompose(image, levels)
+        laplacian_pyr = []
+
+        for i in range(levels - 1):
+            # Upsample the next level
+            upsampled = cv2.pyrUp(gaussian_pyr[i + 1])
+
+            # Match sizes (pyrUp might differ by 1 pixel)
+            h, w = gaussian_pyr[i].shape[:2]
+            upsampled = cv2.resize(upsampled, (w, h))
+
+            # Detail = current - upsampled(next)
+            detail = cv2.subtract(gaussian_pyr[i], upsampled)
+            laplacian_pyr.append(detail)
+
+        # Last level is the lowest frequency (residual)
+        laplacian_pyr.append(gaussian_pyr[-1])
+
+        return laplacian_pyr
+
+    def _histogram_based_parameters(self, image: np.ndarray) -> dict:
+        """
+        Analyze histogram to dynamically adjust processing parameters.
+
+        AutoHDR uses histogram analysis to determine:
+        - Average vs peak luminance
+        - Shadow/highlight distribution
+        - Optimal tone curve adjustments
+
+        Returns dict of suggested parameters.
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
+
+        # Cumulative histogram for percentiles
+        cumsum = np.cumsum(hist)
+        total = cumsum[-1]
+
+        # Find key percentiles
+        p1 = np.searchsorted(cumsum, total * 0.01)   # Black point
+        p5 = np.searchsorted(cumsum, total * 0.05)   # Shadow threshold
+        p50 = np.searchsorted(cumsum, total * 0.50)  # Median
+        p95 = np.searchsorted(cumsum, total * 0.95)  # Highlight threshold
+        p99 = np.searchsorted(cumsum, total * 0.99)  # White point
+
+        # Calculate metrics
+        dynamic_range = p99 - p1
+        shadow_range = p50 - p5
+        highlight_range = p95 - p50
+
+        # Average and peak luminance
+        avg_luminance = np.average(np.arange(256), weights=hist)
+        peak_luminance = np.argmax(hist[10:246]) + 10  # Avoid edge bins
+
+        # Determine optimal parameters based on histogram shape
+        params = {
+            # Shadow lift needed if shadows are crushed
+            'shadow_lift': max(0, (50 - p5) / 100) * 0.5,
+
+            # Highlight compression if highlights are blown
+            'highlight_compress': max(0, (p95 - 220) / 35) * 0.4,
+
+            # Contrast boost if dynamic range is low
+            'contrast_boost': max(0, (150 - dynamic_range) / 150) * 0.3,
+
+            # Brightness adjustment toward optimal midtone
+            'brightness_adjust': (128 - avg_luminance) / 128 * 0.2,
+
+            # Is this a high-key or low-key image?
+            'is_high_key': avg_luminance > 160,
+            'is_low_key': avg_luminance < 90,
+
+            # Dynamic range info
+            'dynamic_range': dynamic_range,
+            'needs_hdr_processing': dynamic_range > 180 or (p95 > 240 and p5 < 30),
+        }
+
+        return params
 
     def _midtone_punch(self, L: np.ndarray, amount: float) -> np.ndarray:
         """S-curve for midtone contrast."""
@@ -2229,6 +2470,203 @@ class AutoHDRProProcessor:
             # Very subtle unsharp mask
             blurred = cv2.GaussianBlur(result, (0, 0), 1.0)
             result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
+
+        return result
+
+    # ========================================================================
+    # HOLLYWOOD COLOR GRADING (Oscar-winning Colorist Techniques)
+    # ========================================================================
+
+    def _apply_color_wheels(self, image: np.ndarray) -> np.ndarray:
+        """
+        Hollywood Color Wheels - The vectorscope method.
+
+        Professional colorists use this as their PRIMARY tool:
+        - Shadows: Add warmth (psychological comfort, depth)
+        - Midtones: Primary grading (40% of visible image)
+        - Highlights: Maintain detail (viewer attention magnets)
+
+        Based on techniques from: DaVinci Resolve, Peter Doyle, Stefan Sonnenfeld
+        """
+        # Convert to float for precision
+        img_float = image.astype(np.float32) / 255.0
+
+        # Calculate luminance using Rec. 709 standard
+        b, g, r = cv2.split(img_float)
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        # Get color shift settings
+        shadow_shift = self.settings.shadow_color_shift
+        midtone_shift = self.settings.midtone_color_shift
+        highlight_shift = self.settings.highlight_color_shift
+
+        # Create tonal range masks with soft transitions
+        shadow_mask = np.clip((0.35 - lum) / 0.35, 0, 1)      # L < 0.35
+        highlight_mask = np.clip((lum - 0.65) / 0.35, 0, 1)   # L > 0.65
+        midtone_mask = 1.0 - shadow_mask - highlight_mask
+        midtone_mask = np.clip(midtone_mask, 0, 1)
+
+        # Apply shadow color shift (warmth = red+yellow, tint = magenta/green)
+        r_adj = r + shadow_mask * shadow_shift[0] * 0.5
+        g_adj = g + shadow_mask * shadow_shift[1] * 0.3
+        b_adj = b - shadow_mask * shadow_shift[0] * 0.3  # Reduce blue for warmth
+
+        # Apply midtone color shift
+        r_adj = r_adj + midtone_mask * midtone_shift[0] * 0.3
+        g_adj = g_adj + midtone_mask * midtone_shift[1] * 0.3
+        b_adj = b_adj - midtone_mask * midtone_shift[0] * 0.2
+
+        # Apply highlight color shift (typically cooler for contrast)
+        r_adj = r_adj + highlight_mask * highlight_shift[0] * 0.3
+        g_adj = g_adj + highlight_mask * highlight_shift[1] * 0.2
+        b_adj = b_adj - highlight_mask * highlight_shift[0] * 0.2
+
+        # Clamp and convert back
+        r_out = np.clip(r_adj, 0, 1)
+        g_out = np.clip(g_adj, 0, 1)
+        b_out = np.clip(b_adj, 0, 1)
+
+        result = cv2.merge([b_out, g_out, r_out])
+        return (result * 255).astype(np.uint8)
+
+    def _apply_hollywood_s_curve(self, image: np.ndarray) -> np.ndarray:
+        """
+        Hollywood Film-Style S-Curve.
+
+        This is THE most important tool in cinema color grading:
+        - Lifts shadows (film doesn't have true blacks)
+        - Compresses highlights (soft rolloff like film)
+        - Adds midtone contrast (visual punch)
+
+        Every major film uses this technique. Period.
+        """
+        shadow_lift = self.settings.hollywood_shadow_lift
+        midtone_contrast = self.settings.hollywood_midtone_contrast
+        highlight_compress = self.settings.hollywood_highlight_compress
+
+        # Work in LAB for luminance-only adjustment
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0] / 255.0
+
+        # Build the S-curve using parametric approach
+        # Film-style: lifted blacks, compressed whites, punchy midtones
+
+        # Shadow lift (film doesn't have true blacks)
+        L_lifted = L + shadow_lift * (1 - L) * (1 - L)
+
+        # Midtone contrast (S-curve center)
+        # Apply more contrast around 0.5 (midtone)
+        midtone_factor = 4 * L_lifted * (1 - L_lifted)  # Bell curve centered at 0.5
+        contrast_boost = (L_lifted - 0.5) * (midtone_contrast - 1.0) * midtone_factor
+        L_contrasted = L_lifted + contrast_boost
+
+        # Highlight rolloff (soft shoulder like film)
+        highlight_mask = np.clip((L_contrasted - 0.7) / 0.3, 0, 1)
+        rolloff = highlight_mask * highlight_compress * (L_contrasted - 0.7)
+        L_final = L_contrasted - rolloff
+
+        lab[:, :, 0] = np.clip(L_final * 255, 0, 255)
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_lut_style(self, image: np.ndarray) -> np.ndarray:
+        """
+        Apply pre-built color grade (LUT-style processing).
+
+        Available styles:
+        - golden_hour: Warm, saturated, flattering (sunset look)
+        - cinematic_cool: Orange/teal (Hollywood blockbuster)
+        - professional_clean: Neutral, crisp (real estate gold standard)
+        """
+        style = self.settings.lut_style
+        intensity = self.settings.lut_intensity
+
+        if style == 'none' or style is None:
+            return image
+
+        # Convert to float
+        img_float = image.astype(np.float32) / 255.0
+        b, g, r = cv2.split(img_float)
+        lum = 0.2126 * r + 0.7152 * g + 0.0722 * b
+
+        if style == 'golden_hour':
+            # Warm, saturated, premium sunset look
+            # Add warmth to shadows, maintain highlights
+            shadow_mask = np.clip((0.4 - lum) / 0.4, 0, 1)
+            mid_mask = np.clip(1 - np.abs(lum - 0.5) / 0.3, 0, 1)
+
+            r_out = r + shadow_mask * 0.15 + mid_mask * 0.08
+            g_out = g + shadow_mask * 0.08 + mid_mask * 0.02
+            b_out = b - shadow_mask * 0.1 - mid_mask * 0.05
+
+        elif style == 'cinematic_cool':
+            # Orange shadows, teal highlights (every blockbuster uses this)
+            shadow_mask = np.clip((0.4 - lum) / 0.4, 0, 1)
+            highlight_mask = np.clip((lum - 0.6) / 0.4, 0, 1)
+
+            # Orange in shadows
+            r_out = r + shadow_mask * 0.12
+            g_out = g + shadow_mask * 0.06
+            b_out = b - shadow_mask * 0.1
+
+            # Teal in highlights
+            r_out = r_out - highlight_mask * 0.08
+            g_out = g_out + highlight_mask * 0.04
+            b_out = b_out + highlight_mask * 0.12
+
+        elif style == 'professional_clean':
+            # Clean, neutral, crisp - real estate standard
+            # Lift shadows to 18% gray, slight blue in highlights
+
+            shadow_mask = np.clip((0.2 - lum) / 0.2, 0, 1)
+            highlight_mask = np.clip((lum - 0.7) / 0.3, 0, 1)
+            mid_mask = np.clip(1 - np.abs(lum - 0.5) / 0.3, 0, 1)
+
+            # Neutral shadow lift
+            lift = shadow_mask * 0.08
+            r_out = r + lift
+            g_out = g + lift
+            b_out = b + lift + highlight_mask * 0.06
+
+            # Boost midtone saturation
+            gray = (r_out + g_out + b_out) / 3
+            sat_boost = 1.08
+            r_out = gray + (r_out - gray) * sat_boost * mid_mask + r_out * (1 - mid_mask)
+            g_out = gray + (g_out - gray) * sat_boost * mid_mask + g_out * (1 - mid_mask)
+            b_out = gray + (b_out - gray) * sat_boost * mid_mask + b_out * (1 - mid_mask)
+
+        else:
+            return image
+
+        # Blend with original based on intensity
+        r_final = r * (1 - intensity) + np.clip(r_out, 0, 1) * intensity
+        g_final = g * (1 - intensity) + np.clip(g_out, 0, 1) * intensity
+        b_final = b * (1 - intensity) + np.clip(b_out, 0, 1) * intensity
+
+        result = cv2.merge([b_final, g_final, r_final])
+        return (np.clip(result, 0, 1) * 255).astype(np.uint8)
+
+    def _apply_hollywood_grading(self, image: np.ndarray) -> np.ndarray:
+        """
+        Complete Hollywood color grading pipeline.
+
+        Order matters (this is exactly how Oscar-winning colorists work):
+        1. Color Wheels (secondary color correction)
+        2. Hollywood S-Curve (film-style contrast)
+        3. LUT Style (creative grade)
+        """
+        result = image
+
+        # Step 1: Color Wheels (if enabled)
+        if self.settings.use_color_wheels:
+            result = self._apply_color_wheels(result)
+
+        # Step 2: Hollywood S-Curve (if enabled)
+        if self.settings.use_hollywood_s_curve:
+            result = self._apply_hollywood_s_curve(result)
+
+        # Step 3: LUT Style (if specified)
+        if self.settings.lut_style and self.settings.lut_style != 'none':
+            result = self._apply_lut_style(result)
 
         return result
 
