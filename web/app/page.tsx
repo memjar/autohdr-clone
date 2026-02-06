@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
 const APP_VERSION = 'v2.0.0'
@@ -32,9 +32,46 @@ export default function Home() {
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
   const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
-  const [useLocalBackend, setUseLocalBackend] = useState(true)
+  const [useLocalBackend, setUseLocalBackend] = useState(false) // Start with cloud, auto-detect Pro
   const [backendUrl, setBackendUrl] = useState('http://192.168.1.147:8000')
   const [showBackendSettings, setShowBackendSettings] = useState(false)
+  const [proProcessorStatus, setProProcessorStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking')
+  const [proProcessorVersion, setProProcessorVersion] = useState<string | null>(null)
+
+  // Auto-detect Pro Processor on mount
+  useEffect(() => {
+    const checkProProcessor = async () => {
+      try {
+        const controller = new AbortController()
+        const timeout = setTimeout(() => controller.abort(), 3000) // 3s timeout
+
+        const res = await fetch(`${backendUrl}/health`, {
+          signal: controller.signal,
+          mode: 'cors'
+        })
+        clearTimeout(timeout)
+
+        if (res.ok) {
+          const data = await res.json()
+          if (data.pro_processor_available) {
+            setProProcessorStatus('connected')
+            setProProcessorVersion(data.components?.pro_processor?.version || 'unknown')
+            setUseLocalBackend(true)
+          } else {
+            setProProcessorStatus('unavailable')
+          }
+        } else {
+          setProProcessorStatus('unavailable')
+        }
+      } catch (e) {
+        // Pro Processor not reachable (expected for remote users)
+        setProProcessorStatus('unavailable')
+        setUseLocalBackend(false)
+      }
+    }
+
+    checkProProcessor()
+  }, [backendUrl])
 
   // Adjustment sliders state
   const [brightness, setBrightness] = useState(0)
@@ -101,14 +138,29 @@ export default function Home() {
         white_balance: whiteBalance.toString(),
       })
 
+      // Check for RAW files when using cloud (cloud doesn't support RAW)
+      const hasRawFiles = files.some(f => isRawFile(f.name))
+      if (!useLocalBackend && hasRawFiles) {
+        throw new Error('RAW files require Pro Engine. Please use JPG/PNG or enable Pro Engine for RAW support.')
+      }
+
       const apiUrl = useLocalBackend
         ? `${backendUrl}/process?${params}`
         : `/api/process?${params}`
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        body: formData,
-      })
+      let response: Response
+      try {
+        response = await fetch(apiUrl, {
+          method: 'POST',
+          body: formData,
+        })
+      } catch (fetchError) {
+        // If Pro Engine fails, offer to retry with cloud
+        if (useLocalBackend) {
+          throw new Error('Pro Engine unreachable. Check that your local server is running, or disable Pro Engine to use cloud processing.')
+        }
+        throw fetchError
+      }
 
       if (!response.ok) {
         const errorData = await response.json().catch(() => ({}))
@@ -119,7 +171,7 @@ export default function Home() {
       const url = URL.createObjectURL(blob)
 
       setResultUrl(url)
-      setResult('Processing complete!')
+      setResult(useLocalBackend ? 'Pro processing complete!' : 'Processing complete (basic)')
     } catch (err: any) {
       console.error('Processing error:', err)
       setError(err.message || 'Processing failed')
@@ -227,13 +279,21 @@ export default function Home() {
                 : 'bg-gray-800/50 text-gray-400 border border-gray-700'
             }`}
           >
-            <span className={`w-2 h-2 rounded-full ${useLocalBackend ? 'bg-emerald-400 animate-pulse' : 'bg-gray-500'}`} />
-            {useLocalBackend ? 'Pro Engine Connected' : 'Cloud Processing'}
+            <span className={`w-2 h-2 rounded-full ${
+              proProcessorStatus === 'checking' ? 'bg-yellow-400 animate-pulse' :
+              proProcessorStatus === 'connected' && useLocalBackend ? 'bg-emerald-400 animate-pulse' :
+              'bg-gray-500'
+            }`} />
+            {proProcessorStatus === 'checking' ? 'Detecting Pro Engine...' :
+             proProcessorStatus === 'connected' && useLocalBackend ? `Pro Engine v${proProcessorVersion}` :
+             proProcessorStatus === 'connected' ? 'Pro Engine Available (tap to enable)' :
+             'Cloud Processing (Basic)'}
           </button>
-          {useLocalBackend && (
+          {(useLocalBackend || proProcessorStatus === 'unavailable') && (
             <button
               onClick={() => setShowBackendSettings(!showBackendSettings)}
               className="ml-2 p-2 text-gray-400 hover:text-white transition"
+              title="Configure Pro Engine URL"
             >
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
@@ -243,7 +303,20 @@ export default function Home() {
           )}
         </div>
 
-        {showBackendSettings && useLocalBackend && (
+        {/* Pro Engine unavailable notice */}
+        {proProcessorStatus === 'unavailable' && (
+          <div className="flex justify-center mb-6">
+            <div className="bg-amber-500/10 border border-amber-500/30 rounded-xl px-4 py-3 max-w-lg text-center">
+              <p className="text-amber-400 text-sm font-medium mb-1">Pro Engine Not Detected</p>
+              <p className="text-gray-400 text-xs">
+                Using basic cloud processing (JPG/PNG only). For RAW support and 95%+ quality,
+                run Pro Engine locally or connect to your Mac Studio.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {showBackendSettings && (
           <div className="flex justify-center mb-6">
             <div className="flex items-center gap-3 bg-gray-900/80 backdrop-blur rounded-xl px-4 py-3 border border-gray-800">
               <span className="text-sm text-gray-400">Engine URL:</span>
@@ -255,11 +328,21 @@ export default function Home() {
               />
               <button
                 onClick={async () => {
+                  setProProcessorStatus('checking')
                   try {
                     const res = await fetch(`${backendUrl}/health`)
                     const data = await res.json()
-                    alert(`Connected! Version: ${data.components?.pro_processor?.version || 'Unknown'}`)
+                    if (data.pro_processor_available) {
+                      setProProcessorStatus('connected')
+                      setProProcessorVersion(data.components?.pro_processor?.version || 'unknown')
+                      setUseLocalBackend(true)
+                      alert(`Connected to Pro Engine v${data.components?.pro_processor?.version}!`)
+                    } else {
+                      setProProcessorStatus('unavailable')
+                      alert('Server found but Pro Processor not available.')
+                    }
                   } catch (e) {
+                    setProProcessorStatus('unavailable')
                     alert('Connection failed. Check URL and server status.')
                   }
                 }}
