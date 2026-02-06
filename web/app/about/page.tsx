@@ -51,8 +51,8 @@ export default function About() {
 
           <div className="prose prose-invert max-w-none space-y-4 text-gray-300 leading-relaxed">
             <p>
-              It was one of those winter nights where the cold outside makes the ideas inside burn brighter.
-              Three friends—armed with nothing but laptops, too much coffee, and an unreasonable amount of
+              It was one of those winter nights at Tall Timbers where the cold outside makes the ideas inside burn brighter.
+              Three friends—armed with nothing but laptops, too many MGDs, and an unreasonable amount of
               opinions about real estate photography—found themselves asking a dangerous question:
             </p>
 
@@ -62,7 +62,13 @@ export default function About() {
 
             <p>
               What started as casual griping quickly evolved into furious whiteboarding. By 2 AM,
-              the pizza was cold, the coffee was colder, but the idea was red hot.
+              the pizza was cold, the MGDs were warm, but the idea was red hot.
+            </p>
+
+            <p>
+              <strong className="text-white">Jeff</strong>, the fourth member of the crew, contributed in his own way—by
+              drinking and smoking in the corner, occasionally nodding in agreement, and providing crucial moral support.
+              Every great team needs someone to keep the vibes right.
             </p>
 
             <p>
@@ -119,14 +125,14 @@ export default function About() {
       <section className="mb-16">
         <h2 className="text-2xl font-bold mb-8 text-center">The Team</h2>
 
-        <div className="grid md:grid-cols-3 gap-6">
+        <div className="grid md:grid-cols-4 gap-6">
           {/* James */}
           <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
             <div className="text-4xl mb-4">🧠</div>
             <h3 className="text-xl font-bold mb-2">James</h3>
             <p className="text-cyan-400 text-sm mb-3">The Architect</p>
             <p className="text-gray-400 text-sm">
-              Turns caffeine into algorithms. Believes every problem is a software problem.
+              Turns MGDs into algorithms. Believes every problem is a software problem.
               Has strong opinions about color spaces and will share them unprompted.
             </p>
           </div>
@@ -152,6 +158,17 @@ export default function About() {
               that Photoshop engineers don't. Probably a wizard. Unconfirmed.
             </p>
           </div>
+
+          {/* Jeff */}
+          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
+            <div className="text-4xl mb-4">🍺</div>
+            <h3 className="text-xl font-bold mb-2">Jeff</h3>
+            <p className="text-cyan-400 text-sm mb-3">The Vibe</p>
+            <p className="text-gray-400 text-sm">
+              Professional drinker and smoker. Contributed zero lines of code but 100% of the morale.
+              Still not entirely sure what HDR stands for.
+            </p>
+          </div>
         </div>
       </section>
 
@@ -166,12 +183,12 @@ export default function About() {
               <div className="text-gray-400 text-sm">Winter night</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-cyan-400">3</div>
+              <div className="text-3xl font-bold text-cyan-400">4</div>
               <div className="text-gray-400 text-sm">Stubborn friends</div>
             </div>
             <div>
               <div className="text-3xl font-bold text-cyan-400">∞</div>
-              <div className="text-gray-400 text-sm">Cups of coffee</div>
+              <div className="text-gray-400 text-sm">MGDs consumed</div>
             </div>
             <div>
               <div className="text-3xl font-bold text-cyan-400">0</div>
