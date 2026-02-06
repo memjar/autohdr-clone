@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.1.0'
+const APP_VERSION = 'v2.2.0'
 
 // Backend URL from environment variable or default
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
@@ -34,7 +34,7 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState<string | null>(null)
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'hdr' | 'twilight'>('hdr')
+  const [mode, setMode] = useState<'hdr' | 'twilight' | 'enhance'>('hdr')
   const [useLocalBackend, setUseLocalBackend] = useState(true)
   const [backendUrl, setBackendUrl] = useState(DEFAULT_BACKEND_URL)
   const [showBackendSettings, setShowBackendSettings] = useState(false)
@@ -430,6 +430,21 @@ export default function Home() {
               Day to Dusk
             </span>
           </button>
+          <button
+            onClick={() => setMode('enhance')}
+            className={`px-8 py-3 rounded-xl font-semibold transition-all ${
+              mode === 'enhance'
+                ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white shadow-lg shadow-emerald-500/25'
+                : 'bg-gray-800/50 text-gray-400 hover:bg-gray-800 border border-gray-700'
+            }`}
+          >
+            <span className="flex items-center gap-2">
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+              </svg>
+              Perfect Edit
+            </span>
+          </button>
         </div>
 
         {/* Pro Engine Unavailable Warning */}
@@ -467,13 +482,25 @@ export default function Home() {
               id="file-input"
             />
             <label htmlFor="file-input" className="cursor-pointer block">
-              <div className="w-20 h-20 mx-auto mb-6 bg-gradient-to-br from-cyan-500/20 to-purple-500/20 rounded-2xl flex items-center justify-center border border-cyan-500/30">
-                <svg className="w-10 h-10 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+              <div className={`w-20 h-20 mx-auto mb-6 bg-gradient-to-br ${
+                mode === 'enhance' ? 'from-emerald-500/20 to-teal-500/20 border-emerald-500/30' :
+                mode === 'twilight' ? 'from-orange-500/20 to-pink-500/20 border-orange-500/30' :
+                'from-cyan-500/20 to-purple-500/20 border-cyan-500/30'
+              } rounded-2xl flex items-center justify-center border`}>
+                <svg className={`w-10 h-10 ${
+                  mode === 'enhance' ? 'text-emerald-400' :
+                  mode === 'twilight' ? 'text-orange-400' : 'text-cyan-400'
+                }`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  {mode === 'enhance' ? (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  ) : (
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                  )}
                 </svg>
               </div>
               <p className="text-2xl font-semibold text-white mb-2">
-                {mode === 'hdr' ? 'Drop your photos here' : 'Drop a daytime photo'}
+                {mode === 'hdr' ? 'Drop your photos here' :
+                 mode === 'enhance' ? 'Drop a photo to enhance' : 'Drop a daytime photo'}
               </p>
               <p className="text-gray-400 mb-4">or click to browse</p>
               {mode === 'hdr' && (
@@ -482,6 +509,14 @@ export default function Home() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   Upload 3-15+ photos • AI auto-groups by scene
+                </div>
+              )}
+              {mode === 'enhance' && (
+                <div className="inline-flex items-center gap-2 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-full text-emerald-400 text-sm">
+                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  AI color • exposure • sharpening • upscale
                 </div>
               )}
               <p className="text-gray-500 text-sm mt-4">
@@ -599,7 +634,13 @@ export default function Home() {
             <button
               onClick={processImages}
               disabled={processing || (mode === 'hdr' && files.length < 2)}
-              className="w-full py-4 bg-gradient-to-r from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40 disabled:shadow-none"
+              className={`w-full py-4 bg-gradient-to-r ${
+                mode === 'enhance'
+                  ? 'from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 shadow-emerald-500/25 hover:shadow-emerald-500/40'
+                  : mode === 'twilight'
+                  ? 'from-orange-500 to-pink-500 hover:from-orange-400 hover:to-pink-400 shadow-orange-500/25 hover:shadow-orange-500/40'
+                  : 'from-cyan-500 to-blue-500 hover:from-cyan-400 hover:to-blue-400 shadow-cyan-500/25 hover:shadow-cyan-500/40'
+              } disabled:from-gray-700 disabled:to-gray-700 disabled:cursor-not-allowed rounded-xl font-semibold text-lg transition-all shadow-lg disabled:shadow-none`}
             >
               {processing ? (
                 <span className="flex items-center justify-center gap-3">
@@ -615,6 +656,13 @@ export default function Home() {
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
                   {files.length > 5 ? `Process ${Math.ceil(files.length / 3)} Scenes` : `Merge ${files.length} Photos`}
+                </span>
+              ) : mode === 'enhance' ? (
+                <span className="flex items-center justify-center gap-2">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  Perfect Edit
                 </span>
               ) : (
                 'Convert to Twilight'
@@ -690,7 +738,7 @@ export default function Home() {
           {[
             { icon: '⚡', title: 'HDR Merge', desc: 'Blend brackets instantly', gradient: 'from-cyan-500/20 to-blue-500/20' },
             { icon: '🌙', title: 'Day to Dusk', desc: 'Twilight conversion', gradient: 'from-orange-500/20 to-pink-500/20' },
-            { icon: '🧠', title: 'Smart Scenes', desc: 'Auto-detect & group', gradient: 'from-purple-500/20 to-pink-500/20' },
+            { icon: '✨', title: 'Perfect Edit', desc: 'AI enhance & upscale', gradient: 'from-emerald-500/20 to-teal-500/20' },
           ].map(({ icon, title, desc, gradient }) => (
             <div key={title} className={`bg-gradient-to-br ${gradient} rounded-2xl p-6 border border-gray-800 text-center`}>
               <div className="text-4xl mb-3">{icon}</div>
