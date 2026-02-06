@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 from typing import Optional, Literal, List, Tuple, Union
 from pathlib import Path
 
-PROCESSOR_VERSION = "4.6.0"  # Advanced denoising + luminance masking + human-centric processing
+PROCESSOR_VERSION = "4.7.0"  # Selective brightness + AutoHDR reverse-engineering pipeline
 
 
 # ============================================================================
@@ -227,6 +227,16 @@ class ProSettings:
     chroma_denoise_strength: float = 0.8      # Aggressive chroma denoising (0-1)
     luma_denoise_strength: float = 0.4        # Gentle luma denoising (0-1)
     use_luminance_mask: bool = True           # Protect bright areas from over-denoising
+
+    # === ADAPTIVE PROCESSING (Difficulty-Based) ===
+    use_adaptive_difficulty: bool = True      # Auto-detect image difficulty
+    difficulty_override: Optional[float] = None  # Manual override (0-100)
+
+    # Selective Brightness (lift only dark areas)
+    use_selective_brightness: bool = True     # Smart local brightness
+    selective_shadow_lift: float = 0.4        # How much to lift dark areas (0-1)
+    selective_threshold: float = 0.4          # Below this luminance = "dark"
+    selective_blend_width: float = 0.15       # Soft transition width
 
     # === HUMAN-CENTRIC PROCESSING (ARRI REVEAL / CIECAM02 Research) ===
     use_perceptual_processing: bool = True    # Enable human-centric processing
@@ -640,6 +650,12 @@ class AutoHDRProProcessor:
         # ====== STAGE 7: AUTO DODGE & BURN (NEW - from Lightroom research) ======
         if self.settings.auto_dodge_burn:
             result = self._auto_dodge_burn(result)
+
+        # ====== STAGE 7.5: SELECTIVE BRIGHTNESS (Smart Local Lift) ======
+        # Key technique: Lift ONLY dark areas, leave bright areas alone
+        # This achieves even illumination without washing out
+        if self.settings.use_selective_brightness:
+            result = self._apply_selective_brightness(result)
 
         # ====== STAGE 8: LUMINOSITY ZONE ADJUSTMENTS ======
         if self.settings.use_7_zone_system:
@@ -2676,6 +2692,162 @@ class AutoHDRProProcessor:
             result = cv2.addWeighted(result, 1.1, blurred, -0.1, 0)
 
         return result
+
+    # ========================================================================
+    # ADAPTIVE PROCESSING (Difficulty Assessment & Selective Brightness)
+    # ========================================================================
+
+    def _assess_image_difficulty(self, image: np.ndarray) -> dict:
+        """
+        Assess image difficulty to determine processing intensity.
+
+        Score 0-100:
+        - 0-20: Clean image, minimal processing
+        - 21-50: Moderate, standard pipeline
+        - 51-75: Difficult, aggressive processing
+        - 76-100: Extreme, maximum restoration
+
+        Based on: Noise, blur, color cast, dynamic range issues
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+
+        # 1. Noise estimation (Laplacian variance)
+        laplacian = cv2.Laplacian(gray, cv2.CV_64F)
+        noise_score = min(100, np.std(laplacian) / 5)
+
+        # 2. Blur estimation (edge sharpness)
+        edges = cv2.Canny(gray, 50, 150)
+        edge_density = np.sum(edges > 0) / (h * w)
+        blur_score = max(0, 100 - edge_density * 500)
+
+        # 3. Color cast detection
+        b, g, r = cv2.split(image)
+        r_mean, g_mean, b_mean = np.mean(r), np.mean(g), np.mean(b)
+        gray_mean = (r_mean + g_mean + b_mean) / 3
+        color_cast = abs(r_mean - gray_mean) + abs(g_mean - gray_mean) + abs(b_mean - gray_mean)
+        color_score = min(100, color_cast / 2)
+
+        # 4. Dynamic range issues (clipping)
+        hist = cv2.calcHist([gray], [0], None, [256], [0, 256]).flatten()
+        clipped_shadows = np.sum(hist[:10]) / (h * w)
+        clipped_highlights = np.sum(hist[245:]) / (h * w)
+        dr_score = min(100, (clipped_shadows + clipped_highlights) * 500)
+
+        # Combined difficulty score
+        difficulty = (noise_score * 0.3 + blur_score * 0.2 +
+                     color_score * 0.2 + dr_score * 0.3)
+
+        # Determine category
+        if difficulty < 20:
+            category = 'clean'
+            recommendation = 'minimal'
+        elif difficulty < 50:
+            category = 'moderate'
+            recommendation = 'standard'
+        elif difficulty < 75:
+            category = 'difficult'
+            recommendation = 'aggressive'
+        else:
+            category = 'extreme'
+            recommendation = 'maximum'
+
+        return {
+            'score': difficulty,
+            'category': category,
+            'recommendation': recommendation,
+            'noise': noise_score,
+            'blur': blur_score,
+            'color_cast': color_score,
+            'dynamic_range': dr_score
+        }
+
+    def _apply_selective_brightness(self, image: np.ndarray) -> np.ndarray:
+        """
+        Selective brightness: lift ONLY dark areas, leave bright areas alone.
+
+        This is the key to even illumination without washing out:
+        - Dark background areas get lifted
+        - Already-bright foreground stays unchanged
+        - Soft transition prevents visible boundaries
+
+        Based on: Professional dodge/burn technique for even illumination
+        """
+        lift = self.settings.selective_shadow_lift
+        threshold = self.settings.selective_threshold
+        blend_width = self.settings.selective_blend_width
+
+        if lift <= 0:
+            return image
+
+        # Convert to LAB for luminance-only adjustment
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB).astype(np.float32)
+        L = lab[:, :, 0] / 255.0
+
+        # Create mask: 1.0 for dark areas, 0.0 for bright areas
+        # Smooth transition at threshold
+        dark_mask = np.clip((threshold - L) / blend_width, 0, 1)
+
+        # Apply Gaussian blur for smooth transitions
+        dark_mask = cv2.GaussianBlur(dark_mask.astype(np.float32), (31, 31), 0)
+
+        # Calculate lift amount (more lift for darker areas)
+        lift_amount = dark_mask * lift * (1 - L)  # Proportional to darkness
+
+        # Apply lift
+        L_lifted = L + lift_amount
+        L_lifted = np.clip(L_lifted, 0, 1)
+
+        lab[:, :, 0] = L_lifted * 255
+        return cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    def _apply_local_white_balance(self, image: np.ndarray) -> np.ndarray:
+        """
+        Local white balance correction for mixed lighting (interior photography).
+
+        Interior scenes often have:
+        - Tungsten (warm) artificial lighting
+        - Daylight (cool) from windows
+        - Different color temperatures in different zones
+
+        This corrects each zone toward neutral while preserving overall warmth.
+        """
+        # Divide image into zones
+        h, w = image.shape[:2]
+        zone_h, zone_w = h // 3, w // 3
+
+        result = image.copy().astype(np.float32)
+
+        for i in range(3):
+            for j in range(3):
+                y1, y2 = i * zone_h, (i + 1) * zone_h if i < 2 else h
+                x1, x2 = j * zone_w, (j + 1) * zone_w if j < 2 else w
+
+                zone = result[y1:y2, x1:x2]
+
+                # Calculate zone color temperature
+                b, g, r = cv2.split(zone)
+                r_mean, g_mean, b_mean = np.mean(r), np.mean(g), np.mean(b)
+
+                # Gentle correction toward neutral (don't fully neutralize)
+                correction_strength = 0.3  # Subtle correction
+                target_gray = (r_mean + g_mean + b_mean) / 3
+
+                r_correction = 1 + (target_gray - r_mean) / (r_mean + 1) * correction_strength
+                g_correction = 1 + (target_gray - g_mean) / (g_mean + 1) * correction_strength
+                b_correction = 1 + (target_gray - b_mean) / (b_mean + 1) * correction_strength
+
+                # Apply correction
+                zone[:, :, 2] = np.clip(r * r_correction, 0, 255)
+                zone[:, :, 1] = np.clip(g * g_correction, 0, 255)
+                zone[:, :, 0] = np.clip(b * b_correction, 0, 255)
+
+                result[y1:y2, x1:x2] = zone
+
+        # Smooth zone boundaries
+        result = cv2.GaussianBlur(result.astype(np.uint8), (5, 5), 0)
+
+        return result.astype(np.uint8)
 
     # ========================================================================
     # HUMAN-CENTRIC PROCESSING (ARRI REVEAL / CIECAM02 / CSF Research)
