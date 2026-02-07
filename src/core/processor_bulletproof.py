@@ -42,7 +42,7 @@ class BulletproofSettings:
     clarity: bool = False  # No extra clarity
     clarity_amount: float = 0.0
     brighten: bool = True
-    brighten_amount: float = 1.85  # INCREASED - target is very bright white walls
+    brighten_amount: float = 2.2  # MORE - target has almost blown white walls
 
     # Upscaling
     upscale: bool = False
@@ -318,7 +318,7 @@ class BulletproofProcessor:
         if self.settings.preset == 'intense':
             vibrance = 1.30
         elif self.settings.preset == 'professional':
-            vibrance = 1.22  # Up from 1.12 - target has vivid colors
+            vibrance = 1.30  # MORE - match target vivid colors
         else:
             vibrance = 1.10
 
@@ -359,8 +359,8 @@ class BulletproofProcessor:
         # Blue hue range: roughly 85-140 in OpenCV HSV (covers cyan to blue)
         blue_mask = ((h >= 85) & (h <= 140)).astype(np.float32)
 
-        # Boost saturation in blue areas by 65% - target has EXTREMELY vivid blues
-        s = np.where(blue_mask > 0, np.minimum(s * 1.65, 255), s)
+        # Boost saturation in blue areas by 80% - target has EXTREMELY vivid blues
+        s = np.where(blue_mask > 0, np.minimum(s * 1.80, 255), s)
 
         # Boost value for brighter, punchier blues
         v = np.where(blue_mask > 0, np.minimum(v * 1.08, 255), v)
