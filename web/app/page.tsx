@@ -464,24 +464,28 @@ export default function Home() {
 
           {/* Bottom Sheet */}
           <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 rounded-t-3xl border-t border-white/10 animate-slide-up">
-            {/* Handle */}
-            <div className="flex justify-center pt-3 pb-2">
+            {/* Header with Handle and Close */}
+            <div className="flex items-center justify-between px-6 pt-3 pb-4">
+              {/* Spacer for centering */}
+              <div className="w-10" />
+
+              {/* Handle */}
               <div className="w-10 h-1 rounded-full bg-white/20" />
+
+              {/* Close Button */}
+              <button
+                onClick={() => setMobileMenuOpen(false)}
+                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition"
+                aria-label="Close menu"
+              >
+                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                </svg>
+              </button>
             </div>
 
-            {/* Close Button */}
-            <button
-              onClick={() => setMobileMenuOpen(false)}
-              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition"
-              aria-label="Close menu"
-            >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-              </svg>
-            </button>
-
             {/* Menu Content */}
-            <div className="px-6 pb-8 pt-2">
+            <div className="px-6 pb-8">
               {/* Nav Links */}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <a href="/pricing" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
