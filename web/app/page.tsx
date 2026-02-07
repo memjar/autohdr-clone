@@ -588,14 +588,14 @@ export default function Home() {
               <button
                 key={service.id}
                 onClick={() => setMode(service.id as typeof mode)}
-                className={`p-4 rounded-xl text-center transition-all ${
+                className={`p-4 rounded-xl transition-all flex flex-col items-center justify-center ${
                   mode === service.id
                     ? 'bg-white text-black'
                     : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                 }`}
               >
-                <div className="mb-2 text-current">{service.icon}</div>
-                <div className="text-sm font-medium">{service.name}</div>
+                <div className="mb-2">{service.icon}</div>
+                <div className="text-sm font-medium text-center">{service.name}</div>
               </button>
             ))}
           </div>
@@ -884,12 +884,11 @@ export default function Home() {
                     alt="Before HDR"
                     className="w-full h-full object-cover"
                     style={{
-                      filter: 'brightness(0.6) contrast(1.3) saturate(0.7)',
+                      filter: 'brightness(0.55) contrast(1.4) saturate(0.6)',
                     }}
                   />
-                  {/* Simulated blown windows */}
-                  <div className="absolute top-[15%] right-[10%] w-[25%] h-[35%] bg-white/90 blur-sm" />
-                  <div className="absolute top-[20%] right-[40%] w-[15%] h-[25%] bg-white/80 blur-sm" />
+                  {/* Dark vignette overlay to simulate underexposure */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
                   {/* Problem indicators */}
                   <div className="absolute top-4 left-4 flex flex-col gap-2">
                     <span className="px-2.5 py-1 rounded-md bg-red-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Unedited</span>
@@ -898,15 +897,15 @@ export default function Home() {
                   <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Blown windows
+                      Dark interior
                     </span>
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Dark shadows
+                      Lost detail
                     </span>
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Dull colors
+                      Flat colors
                     </span>
                   </div>
                 </div>
@@ -946,12 +945,6 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </div>
-            {/* Arrow indicator between images */}
-            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-white shadow-xl items-center justify-center">
-              <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
             </div>
           </div>
 
