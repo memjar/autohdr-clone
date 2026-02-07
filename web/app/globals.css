@@ -2,6 +2,39 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Prevent horizontal scroll on mobile */
+html, body {
+  overflow-x: hidden;
+  width: 100%;
+  max-width: 100vw;
+}
+
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/* Prevent pull-to-refresh and overscroll */
+body {
+  overscroll-behavior: none;
+}
+
+/* Touch-friendly inputs */
+input[type="file"],
+input[type="range"],
+button {
+  touch-action: manipulation;
+}
+
+/* Smooth scrolling */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Better tap targets on mobile */
+@media (max-width: 768px) {
+  button, a {
+    min-height: 44px;
+  }
 }
