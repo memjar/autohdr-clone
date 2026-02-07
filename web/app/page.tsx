@@ -178,6 +178,9 @@ export default function Home() {
       const totalSizeMB = (totalSize / 1024 / 1024).toFixed(1)
 
       // Use XMLHttpRequest for upload progress
+      console.log('Starting upload to:', apiUrl)
+      console.log('Total size:', totalSizeMB, 'MB')
+
       const blob = await new Promise<Blob>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
 
@@ -231,9 +234,12 @@ export default function Home() {
             progressInterval.current = null
           }
 
-          if (xhr.status === 200) {
+          console.log('XHR load complete, status:', xhr.status, 'response size:', xhr.response?.size)
+
+          if (xhr.status === 200 && xhr.response) {
             resolve(xhr.response)
           } else {
+            console.error('XHR error response:', xhr.responseText || xhr.response)
             reject(new Error(`Processing failed: ${xhr.status}`))
           }
         })
@@ -252,21 +258,30 @@ export default function Home() {
         xhr.send(formData)
       })
 
-      if (blob.size < 1000) throw new Error('Invalid response from server')
+      console.log('Received blob:', blob.size, 'bytes, type:', blob.type)
+
+      if (blob.size < 1000) {
+        console.error('Blob too small:', blob.size)
+        throw new Error('Invalid response from server')
+      }
 
       const url = URL.createObjectURL(blob)
+      console.log('Created blob URL:', url)
+
       setProgress(100)
       setProgressStatus('Complete!')
       setResultUrl(url)
       setResult('Processing complete!')
 
       // Auto-download result
+      console.log('Triggering download...')
       const a = document.createElement('a')
       a.href = url
       a.download = `hdrit_${mode}_${Date.now()}.jpg`
       document.body.appendChild(a)
       a.click()
       document.body.removeChild(a)
+      console.log('Download triggered')
     } catch (err: any) {
       if (err.message.includes('timeout')) {
         setError('Request timed out. Check if the backend is accessible.')
