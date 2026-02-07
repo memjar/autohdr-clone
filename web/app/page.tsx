@@ -307,6 +307,7 @@ export default function Home() {
               <span className="font-semibold text-white text-lg">HDRit</span>
             </a>
             <div className="flex items-center gap-6">
+              <a href="/about" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">About</a>
               <a href="/pricing" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Pricing</a>
               <a href="/dashboard" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Dashboard</a>
               <a href="/dashboard" className="px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/15 rounded-lg transition">

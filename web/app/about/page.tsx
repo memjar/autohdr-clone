@@ -1,35 +1,58 @@
 'use client'
 
+// SVG Icons
+const Icons = {
+  brain: (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+    </svg>
+  ),
+  camera: (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z" />
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 13a3 3 0 11-6 0 3 3 0 016 0z" />
+    </svg>
+  ),
+  palette: (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 21a4 4 0 01-4-4V5a2 2 0 012-2h4a2 2 0 012 2v12a4 4 0 01-4 4zm0 0h12a2 2 0 002-2v-4a2 2 0 00-2-2h-2.343M11 7.343l1.657-1.657a2 2 0 012.828 0l2.829 2.829a2 2 0 010 2.828l-8.486 8.485M7 17h.01" />
+    </svg>
+  ),
+  glass: (
+    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
+    </svg>
+  ),
+}
+
 export default function About() {
   return (
-    <main className="min-h-screen bg-gradient-to-br from-gray-950 via-gray-900 to-gray-950">
-      {/* Animated background elements */}
+    <main className="min-h-screen bg-[#0a0a0f]">
+      {/* Subtle background gradient */}
       <div className="fixed inset-0 overflow-hidden pointer-events-none">
-        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-cyan-500/10 rounded-full blur-3xl animate-pulse" />
-        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/10 rounded-full blur-3xl animate-pulse delay-1000" />
+        <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-blue-500/5 rounded-full blur-3xl" />
+        <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative z-10 p-8 max-w-4xl mx-auto">
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8">
       {/* Navigation */}
-      <nav className="flex justify-between items-center mb-12">
-        <a href="/" className="flex items-center gap-3 group">
-          <div className="w-10 h-10 bg-gradient-to-br from-cyan-400 to-blue-500 rounded-xl flex items-center justify-center shadow-lg shadow-cyan-500/25 group-hover:shadow-cyan-500/40 transition-all">
-            <span className="text-xl">⚡</span>
+      <nav className="flex justify-between items-center mb-12 pb-6 border-b border-white/5">
+        <a href="/" className="flex items-center gap-2">
+          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+            <span className="text-white font-bold text-sm">H</span>
           </div>
-          <span className="font-bold text-2xl bg-gradient-to-r from-white to-gray-300 bg-clip-text text-transparent">
-            HDRit
-          </span>
+          <span className="font-semibold text-white text-lg">HDRit</span>
         </a>
         <div className="flex items-center gap-6">
-          <a href="/pricing" className="text-gray-400 hover:text-white transition font-medium">
+          <a href="/pricing" className="text-sm text-gray-400 hover:text-white transition">
             Pricing
           </a>
-          <a href="/dashboard" className="text-gray-400 hover:text-white transition font-medium">
+          <a href="/dashboard" className="text-sm text-gray-400 hover:text-white transition">
             Dashboard
           </a>
           <a
             href="/dashboard"
-            className="px-5 py-2.5 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:from-cyan-400 hover:to-blue-400 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
+            className="px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/15 rounded-lg transition"
           >
             Sign In
           </a>
@@ -47,7 +70,7 @@ export default function About() {
       {/* Origin Story */}
       <section className="mb-16">
         <div className="bg-gradient-to-br from-gray-900 to-gray-800 rounded-2xl p-8 border border-gray-700">
-          <h2 className="text-2xl font-bold mb-6 text-cyan-400">The Origin Story</h2>
+          <h2 className="text-2xl font-bold mb-6 text-blue-400">The Origin Story</h2>
 
           <div className="prose prose-invert max-w-none space-y-4 text-gray-300 leading-relaxed">
             <p>
@@ -56,7 +79,7 @@ export default function About() {
               opinions about real estate photography—found themselves asking a dangerous question:
             </p>
 
-            <p className="text-xl text-white font-medium italic border-l-4 border-cyan-400 pl-4 my-6">
+            <p className="text-xl text-white font-medium italic border-l-4 border-blue-400 pl-4 my-6">
               "Why does professional HDR editing still feel like it belongs in 2015?"
             </p>
 
@@ -127,10 +150,10 @@ export default function About() {
 
         <div className="grid md:grid-cols-4 gap-6">
           {/* James */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
-            <div className="text-4xl mb-4">🧠</div>
-            <h3 className="text-xl font-bold mb-2">James</h3>
-            <p className="text-cyan-400 text-sm mb-3">The Architect</p>
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:border-blue-400/50 transition">
+            <div className="text-blue-400 mb-4">{Icons.brain}</div>
+            <h3 className="text-xl font-bold mb-2 text-white">James</h3>
+            <p className="text-blue-400 text-sm mb-3">The Architect</p>
             <p className="text-gray-400 text-sm">
               Turns MGDs into algorithms. Believes every problem is a software problem.
               Has strong opinions about color spaces and will share them unprompted.
@@ -138,10 +161,10 @@ export default function About() {
           </div>
 
           {/* Austin */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
-            <div className="text-4xl mb-4">📷</div>
-            <h3 className="text-xl font-bold mb-2">Austin</h3>
-            <p className="text-cyan-400 text-sm mb-3">The Eye</p>
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:border-blue-400/50 transition">
+            <div className="text-blue-400 mb-4">{Icons.camera}</div>
+            <h3 className="text-xl font-bold mb-2 text-white">Austin</h3>
+            <p className="text-blue-400 text-sm mb-3">The Eye</p>
             <p className="text-gray-400 text-sm">
               Master photographer who can spot a blown highlight from across the room.
               His parameters are the reason your photos look like photos, not fever dreams.
@@ -149,10 +172,10 @@ export default function About() {
           </div>
 
           {/* Daniele */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
-            <div className="text-4xl mb-4">🎨</div>
-            <h3 className="text-xl font-bold mb-2">Daniele</h3>
-            <p className="text-cyan-400 text-sm mb-3">The Alchemist</p>
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:border-blue-400/50 transition">
+            <div className="text-blue-400 mb-4">{Icons.palette}</div>
+            <h3 className="text-xl font-bold mb-2 text-white">Daniele</h3>
+            <p className="text-blue-400 text-sm mb-3">The Alchemist</p>
             <p className="text-gray-400 text-sm">
               Photo editing wizard who treats pixels like paint. Knows secrets about color grading
               that Photoshop engineers don't. Probably a wizard. Unconfirmed.
@@ -160,10 +183,10 @@ export default function About() {
           </div>
 
           {/* Jeff */}
-          <div className="bg-gray-900 rounded-xl p-6 border border-gray-800 hover:border-cyan-400/50 transition">
-            <div className="text-4xl mb-4">🍺</div>
-            <h3 className="text-xl font-bold mb-2">Jeff</h3>
-            <p className="text-cyan-400 text-sm mb-3">The Vibe</p>
+          <div className="bg-white/5 rounded-xl p-6 border border-white/10 hover:border-blue-400/50 transition">
+            <div className="text-blue-400 mb-4">{Icons.glass}</div>
+            <h3 className="text-xl font-bold mb-2 text-white">Jeff</h3>
+            <p className="text-blue-400 text-sm mb-3">The Vibe</p>
             <p className="text-gray-400 text-sm">
               Professional drinker and smoker. Contributed zero lines of code but 100% of the morale.
               Still not entirely sure what HDR stands for.
@@ -179,19 +202,19 @@ export default function About() {
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-6 text-center">
             <div>
-              <div className="text-3xl font-bold text-cyan-400">1</div>
+              <div className="text-3xl font-bold text-blue-400">1</div>
               <div className="text-gray-400 text-sm">Winter night</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-cyan-400">4</div>
+              <div className="text-3xl font-bold text-blue-400">4</div>
               <div className="text-gray-400 text-sm">Stubborn friends</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-cyan-400">∞</div>
+              <div className="text-3xl font-bold text-blue-400">∞</div>
               <div className="text-gray-400 text-sm">MGDs consumed</div>
             </div>
             <div>
-              <div className="text-3xl font-bold text-cyan-400">0</div>
+              <div className="text-3xl font-bold text-blue-400">0</div>
               <div className="text-gray-400 text-sm">Regrets</div>
             </div>
           </div>
@@ -207,7 +230,7 @@ export default function About() {
         <div className="flex justify-center gap-4">
           <a
             href="/"
-            className="px-6 py-3 bg-gradient-to-r from-cyan-500 to-blue-500 text-white font-semibold rounded-xl hover:from-cyan-400 hover:to-blue-400 transition-all shadow-lg shadow-cyan-500/25 hover:shadow-cyan-500/40"
+            className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-600 text-white font-medium rounded-lg hover:from-blue-400 hover:to-purple-500 transition-all"
           >
             Try It Free
           </a>
@@ -222,7 +245,7 @@ export default function About() {
 
       {/* Footer */}
       <footer className="mt-12 pt-8 border-t border-gray-800 text-center text-gray-500 text-sm">
-        <p>HDRit • Made by <a href="https://linky.my" target="_blank" rel="noopener noreferrer" className="text-cyan-400 hover:text-cyan-300 transition">Virul</a></p>
+        <p>HDRit • Made by <a href="https://linky.my" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:text-blue-300 transition">Virul</a></p>
         <p className="mt-2 text-xs text-gray-600">
           © 2026 HDRit. All rights reserved.
         </p>
