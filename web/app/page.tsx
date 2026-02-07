@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.4.0'
+const APP_VERSION = 'v2.5.0'
 
 // Backend URL from environment variable or default to ngrok custom domain
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://hdr.it.com.ngrok.pro'
@@ -227,9 +227,9 @@ export default function Home() {
         ? `${backendUrl}/process?${params}`
         : `/api/process?${params}`
 
-      // Create abort controller for timeout
+      // Create abort controller for timeout (5 min for large RAW files)
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000) // 2 minute timeout
+      const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 minute timeout for RAW
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -257,6 +257,14 @@ export default function Home() {
       setProgressStatus('Complete!')
       setResultUrl(url)
       setResult('Processing complete!')
+
+      // Auto-download the result
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `hdrit_${mode}_${Date.now()}.jpg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
     } catch (err: any) {
       console.error('Processing error:', err)
       if (err.name === 'AbortError') {
