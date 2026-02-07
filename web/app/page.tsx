@@ -96,6 +96,27 @@ export default function Home() {
   const [progress, setProgress] = useState(0)
   const [progressStatus, setProgressStatus] = useState('')
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
+  const [previewUrls, setPreviewUrls] = useState<string[]>([])
+
+  // Generate preview URLs when files change
+  useEffect(() => {
+    // Revoke old URLs to prevent memory leaks
+    previewUrls.forEach(url => URL.revokeObjectURL(url))
+
+    // Create new preview URLs for non-RAW files
+    const newUrls = files.map(file => {
+      if (!isRawFile(file.name) && file.type.startsWith('image/')) {
+        return URL.createObjectURL(file)
+      }
+      return ''
+    })
+    setPreviewUrls(newUrls)
+
+    // Cleanup on unmount
+    return () => {
+      newUrls.forEach(url => url && URL.revokeObjectURL(url))
+    }
+  }, [files])
 
   useEffect(() => {
     return () => {
@@ -452,22 +473,58 @@ export default function Home() {
               <button onClick={() => setFiles([])} className="text-sm text-red-400 hover:text-red-300">Clear</button>
             </div>
 
-            <div className="grid grid-cols-4 sm:grid-cols-6 gap-2 mb-6">
+            {/* Thumbnail Grid */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
               {files.slice(0, 12).map((file, i) => (
-                <div key={i} className="aspect-video rounded-lg overflow-hidden bg-white/5">
-                  {isRawFile(file.name) ? (
-                    <div className="w-full h-full flex flex-col items-center justify-center text-gray-500">
-                      {Icons.photo}
-                      <span className="text-[10px] mt-1">{file.name.split('.').pop()?.toUpperCase()}</span>
-                    </div>
-                  ) : (
-                    <img src={URL.createObjectURL(file)} alt="" className="w-full h-full object-cover" />
-                  )}
+                <div key={i} className="group relative">
+                  <div className="aspect-[4/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 group-hover:border-blue-500/50 transition-all">
+                    {isRawFile(file.name) ? (
+                      <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gradient-to-br from-white/5 to-white/[0.02]">
+                        <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center mb-2">
+                          {Icons.photo}
+                        </div>
+                        <span className="text-xs font-medium text-blue-400">{file.name.split('.').pop()?.toUpperCase()}</span>
+                      </div>
+                    ) : previewUrls[i] ? (
+                      <img
+                        src={previewUrls[i]}
+                        alt={file.name}
+                        loading="lazy"
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full flex items-center justify-center">
+                        <div className="w-6 h-6 border-2 border-white/20 border-t-blue-500 rounded-full animate-spin" />
+                      </div>
+                    )}
+                  </div>
+                  {/* File name tooltip */}
+                  <div className="mt-1.5 px-1">
+                    <p className="text-[11px] text-gray-500 truncate" title={file.name}>
+                      {file.name.length > 20 ? file.name.slice(0, 17) + '...' : file.name}
+                    </p>
+                    <p className="text-[10px] text-gray-600">
+                      {(file.size / 1024 / 1024).toFixed(1)} MB
+                    </p>
+                  </div>
+                  {/* Remove button */}
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      setFiles(files.filter((_, idx) => idx !== i))
+                    }}
+                    className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                  >
+                    <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+                    </svg>
+                  </button>
                 </div>
               ))}
               {files.length > 12 && (
-                <div className="aspect-video rounded-lg bg-white/5 flex items-center justify-center text-gray-500 text-sm">
-                  +{files.length - 12}
+                <div className="aspect-[4/3] rounded-xl bg-white/5 border border-white/10 flex flex-col items-center justify-center text-gray-400">
+                  <span className="text-2xl font-bold">+{files.length - 12}</span>
+                  <span className="text-xs">more files</span>
                 </div>
               )}
             </div>
