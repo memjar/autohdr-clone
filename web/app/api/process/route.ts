@@ -10,11 +10,11 @@ export async function POST(request: NextRequest) {
     const formData = await request.formData()
     const searchParams = request.nextUrl.searchParams
 
-    // Reconstruct FormData for forwarding
+    // Reconstruct FormData for forwarding (using Array.from for TS compatibility)
     const forwardFormData = new FormData()
-    for (const [key, value] of formData.entries()) {
+    Array.from(formData.entries()).forEach(([key, value]) => {
       forwardFormData.append(key, value)
-    }
+    })
 
     // Forward to backend
     const backendUrl = `${BACKEND_URL}/process?${searchParams.toString()}`
