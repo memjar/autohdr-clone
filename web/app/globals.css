@@ -272,3 +272,144 @@ input[type="range"]::-webkit-slider-runnable-track {
     background: rgba(255, 255, 255, 0.3);
   }
 }
+
+/* === ADVANCED LAYOUT - CSS GRID AUTO-FIT === */
+.auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 1rem;
+}
+
+/* === FLEXBOX UTILITIES === */
+.flex-responsive {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.flex-responsive > * {
+  flex: 1 1 200px;
+  min-width: 0; /* Prevent overflow */
+}
+
+/* === GPU-ACCELERATED ANIMATIONS === */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Smooth transitions using only GPU-friendly properties */
+.transition-gpu {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* === CONTENT VISIBILITY (Performance) === */
+.content-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px; /* Estimated height */
+}
+
+/* === INTERSECTION OBSERVER ANIMATIONS === */
+.fade-in-view {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in-view.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* === IMAGE LOADING STATES === */
+.img-loading {
+  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.img-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.img-loaded {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* === BUTTON STATES (INP Optimization) === */
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* Instant feedback for touch */
+@media (pointer: coarse) {
+  button,
+  [role="button"] {
+    transition: transform 0.05s ease;
+  }
+}
+
+/* === CONTAINER QUERIES (Modern CSS) === */
+@container (min-width: 400px) {
+  .container-responsive {
+    flex-direction: row;
+  }
+}
+
+/* === ASPECT RATIO UTILITIES === */
+.aspect-4-3 { aspect-ratio: 4 / 3; }
+.aspect-16-9 { aspect-ratio: 16 / 9; }
+.aspect-3-2 { aspect-ratio: 3 / 2; }
+.aspect-square { aspect-ratio: 1 / 1; }
+
+/* === LAYER SYSTEM FOR PERFORMANCE === */
+@layer base, components, utilities;
+
+/* === HIGH CONTRAST MODE === */
+@media (prefers-contrast: high) {
+  button,
+  a {
+    border: 2px solid currentColor;
+  }
+
+  .border-white\/10 {
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+}
+
+/* === DARK MODE OPTIMIZATIONS === */
+@media (prefers-color-scheme: dark) {
+  img {
+    filter: brightness(0.95); /* Reduce eye strain */
+  }
+}
+
+/* === LANDSCAPE MOBILE OPTIMIZATION === */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero-section {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .mobile-menu-sheet {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+}

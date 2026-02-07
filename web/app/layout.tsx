@@ -59,17 +59,41 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   const content = (
-    <html lang="en" className="antialiased">
+    <html lang="en" className="antialiased" suppressHydrationWarning>
       <head>
-        {/* Preconnect to backend for faster API calls */}
-        <link rel="preconnect" href="https://hdr.it.com.ngrok.pro" />
+        {/* === CRITICAL PRELOAD (LCP Optimization) === */}
+        {/* Preconnect to backend and CDNs */}
+        <link rel="preconnect" href="https://hdr.it.com.ngrok.pro" crossOrigin="anonymous" />
         <link rel="dns-prefetch" href="https://hdr.it.com.ngrok.pro" />
+        <link rel="preconnect" href="https://images.unsplash.com" crossOrigin="anonymous" />
+
+        {/* Preload critical above-the-fold images (LCP) */}
+        <link
+          rel="preload"
+          href="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80"
+          as="image"
+          type="image/jpeg"
+        />
+
         {/* PWA manifest */}
         <link rel="manifest" href="/manifest.json" />
-        {/* Favicon */}
+
+        {/* Favicon with multiple sizes */}
         <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+
+        {/* Mobile optimizations */}
+        <meta name="mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-capable" content="yes" />
+        <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+
+        {/* Prevent text size adjustment on orientation change */}
+        <meta name="format-detection" content="telephone=no" />
+
+        {/* Color scheme for native UI elements */}
+        <meta name="color-scheme" content="dark" />
       </head>
-      <body className="bg-[#0a0a0f] text-white min-h-screen">
+      <body className="bg-black text-white min-h-screen overscroll-none">
         {children}
       </body>
     </html>
