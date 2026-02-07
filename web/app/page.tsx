@@ -14,8 +14,13 @@ const isClerkConfigured = typeof window !== 'undefined'
   ? !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
   : !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
 
-const APP_VERSION = 'v3.3.0'
+const APP_VERSION = 'v3.4.0'
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://hdr.it.com.ngrok.pro'
+
+// Cloud storage API keys (set in Vercel environment)
+const DROPBOX_APP_KEY = process.env.NEXT_PUBLIC_DROPBOX_APP_KEY || ''
+const GOOGLE_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_API_KEY || ''
+const GOOGLE_CLIENT_ID = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID || ''
 
 const RAW_EXTENSIONS = [
   '.arw', '.srf', '.sr2', '.cr2', '.cr3', '.crw', '.nef', '.nrw',
@@ -667,25 +672,90 @@ export default function Home() {
                 <div className="flex items-center justify-center gap-4 mt-4 pt-4 border-t border-white/10">
                   <span className="text-xs text-gray-500">Import from:</span>
                   <button
-                    onClick={() => alert('Dropbox integration coming soon!')}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all group"
+                    onClick={() => {
+                      // Dropbox Chooser integration
+                      if (typeof window !== 'undefined' && (window as any).Dropbox) {
+                        (window as any).Dropbox.choose({
+                          success: (files: any[]) => {
+                            // Files have .link property with direct download URL
+                            files.forEach(async (file) => {
+                              try {
+                                const response = await fetch(file.link)
+                                const blob = await response.blob()
+                                const f = new File([blob], file.name, { type: blob.type })
+                                setFiles(prev => [...prev, f])
+                              } catch (e) {
+                                console.error('Error loading from Dropbox:', e)
+                              }
+                            })
+                          },
+                          linkType: 'direct',
+                          multiselect: true,
+                          extensions: ['.jpg', '.jpeg', '.png', '.tiff', '.tif', '.arw', '.cr2', '.cr3', '.nef', '.dng', '.raw'],
+                        })
+                      } else {
+                        // Load Dropbox SDK if not loaded
+                        const script = document.createElement('script')
+                        script.src = 'https://www.dropbox.com/static/api/2/dropins.js'
+                        script.id = 'dropboxjs'
+                        script.dataset.appKey = DROPBOX_APP_KEY || 'your-app-key'
+                        script.onload = () => alert('Dropbox loaded! Click again to select files.')
+                        document.head.appendChild(script)
+                        if (!DROPBOX_APP_KEY) {
+                          alert('Dropbox integration requires API key. Contact support to enable.')
+                        }
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-[#0061FF]/10 hover:bg-[#0061FF]/20 border border-[#0061FF]/30 hover:border-[#0061FF]/50 transition-all group"
                   >
-                    <svg className="w-5 h-5 text-blue-400" viewBox="0 0 24 24" fill="currentColor">
+                    <svg className="w-5 h-5 text-[#0061FF]" viewBox="0 0 24 24" fill="currentColor">
                       <path d="M6 2l6 3.75L6 9.5 0 5.75 6 2zm12 0l6 3.75-6 3.75-6-3.75L18 2zM0 13.25L6 9.5l6 3.75-6 3.75-6-3.75zm18-3.75l6 3.75-6 3.75-6-3.75 6-3.75zM6 17.5l6-3.75 6 3.75-6 3.75-6-3.75z"/>
                     </svg>
-                    <span className="text-sm text-gray-300 group-hover:text-white">Dropbox</span>
+                    <span className="text-sm text-[#0061FF] font-medium">Dropbox</span>
                   </button>
                   <button
-                    onClick={() => alert('Google Drive integration coming soon!')}
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 hover:border-white/20 transition-all group"
+                    onClick={() => {
+                      // Google Drive Picker
+                      if (!GOOGLE_API_KEY || !GOOGLE_CLIENT_ID) {
+                        alert('Google Drive integration requires API credentials. Contact support to enable.')
+                        return
+                      }
+                      // Load Google API if needed
+                      if (!(window as any).gapi) {
+                        const script = document.createElement('script')
+                        script.src = 'https://apis.google.com/js/api.js'
+                        script.onload = () => {
+                          (window as any).gapi.load('picker', () => {
+                            alert('Google Drive loaded! Click again to select files.')
+                          })
+                        }
+                        document.head.appendChild(script)
+                      } else {
+                        // Open picker
+                        const picker = new (window as any).google.picker.PickerBuilder()
+                          .addView((window as any).google.picker.ViewId.DOCS_IMAGES)
+                          .setOAuthToken('') // Would need OAuth flow
+                          .setDeveloperKey(GOOGLE_API_KEY)
+                          .setCallback((data: any) => {
+                            if (data.action === 'picked') {
+                              console.log('Selected:', data.docs)
+                            }
+                          })
+                          .build()
+                        picker.setVisible(true)
+                      }
+                    }}
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/20 hover:border-white/30 transition-all group"
                   >
-                    <svg className="w-5 h-5" viewBox="0 0 24 24">
-                      <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z"/>
-                      <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-                      <path fill="#FBBC05" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z"/>
-                      <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z"/>
+                    <svg className="w-5 h-5" viewBox="0 0 87.3 78" fill="none">
+                      <path d="M6.6 66.85L3.85 72.65L27.05 72.65L29.85 66.85L6.6 66.85Z" fill="#0066DA"/>
+                      <path d="M43.65 0L20.4 0L0 37.3L6.6 66.85L29.85 66.85L43.65 37.3L43.65 0Z" fill="#00AC47"/>
+                      <path d="M83.35 66.85L87.3 37.3L66.9 0L43.65 0L43.65 37.3L57.45 66.85L83.35 66.85Z" fill="#EA4335"/>
+                      <path d="M27.05 72.65L60.1 72.65L57.45 66.85L29.85 66.85L27.05 72.65Z" fill="#00832D"/>
+                      <path d="M43.65 37.3L29.85 66.85L57.45 66.85L43.65 37.3Z" fill="#2684FC"/>
+                      <path d="M83.35 66.85L80.5 72.65L60.1 72.65L57.45 66.85L83.35 66.85Z" fill="#FFBA00"/>
                     </svg>
-                    <span className="text-sm text-gray-300 group-hover:text-white">Google Drive</span>
+                    <span className="text-sm text-white font-medium">Google Drive</span>
                   </button>
                 </div>
               </div>
@@ -1002,12 +1072,6 @@ export default function Home() {
                   </div>
                 </div>
               </div>
-            </div>
-            {/* Arrow indicator between images */}
-            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-white shadow-xl items-center justify-center">
-              <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
-              </svg>
             </div>
           </div>
 
