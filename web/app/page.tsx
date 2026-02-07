@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.2.0'
+const APP_VERSION = 'v2.3.0'
 
 // Backend URL from environment variable or default
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
@@ -48,6 +48,13 @@ export default function Home() {
   const [contrast, setContrast] = useState(0)
   const [vibrance, setVibrance] = useState(0)
   const [whiteBalance, setWhiteBalance] = useState(0)
+
+  // Perfect Edit specific options
+  const [windowPull, setWindowPull] = useState(true)
+  const [skyEnhance, setSkyEnhance] = useState(true)
+  const [perspectiveCorrect, setPerspectiveCorrect] = useState(true)
+  const [noiseReduction, setNoiseReduction] = useState(true)
+  const [sharpening, setSharpening] = useState(true)
 
   // Before/after comparison
   const [comparePosition, setComparePosition] = useState(50)
@@ -152,8 +159,24 @@ export default function Home() {
     setProgress(0)
     setProgressStatus('Uploading images...')
 
-    // Start progress simulation
-    const stages = [
+    // Start progress simulation - different stages per mode
+    const stages = mode === 'enhance' ? [
+      { pct: 10, msg: 'Uploading image...' },
+      { pct: 20, msg: 'Analyzing exposure...' },
+      { pct: 35, msg: 'Color correction...' },
+      { pct: 50, msg: 'Window pull adjustment...' },
+      { pct: 65, msg: 'Sky enhancement...' },
+      { pct: 75, msg: 'Perspective correction...' },
+      { pct: 85, msg: 'Sharpening & denoise...' },
+      { pct: 95, msg: 'Finalizing...' },
+    ] : mode === 'twilight' ? [
+      { pct: 10, msg: 'Uploading image...' },
+      { pct: 30, msg: 'Analyzing scene...' },
+      { pct: 50, msg: 'Generating twilight sky...' },
+      { pct: 70, msg: 'Blending interior lights...' },
+      { pct: 85, msg: 'Color grading...' },
+      { pct: 95, msg: 'Finalizing...' },
+    ] : [
       { pct: 10, msg: 'Uploading images...' },
       { pct: 25, msg: 'Reading RAW files...' },
       { pct: 40, msg: 'Aligning brackets...' },
@@ -190,6 +213,15 @@ export default function Home() {
         vibrance: vibrance.toString(),
         white_balance: whiteBalance.toString(),
       })
+
+      // Add Perfect Edit specific params
+      if (mode === 'enhance') {
+        params.set('window_pull', windowPull.toString())
+        params.set('sky_enhance', skyEnhance.toString())
+        params.set('perspective_correct', perspectiveCorrect.toString())
+        params.set('noise_reduction', noiseReduction.toString())
+        params.set('sharpening', sharpening.toString())
+      }
 
       const apiUrl = useLocalBackend
         ? `${backendUrl}/process?${params}`
@@ -475,7 +507,7 @@ export default function Home() {
           <div className="relative bg-gray-900/80 backdrop-blur border-2 border-dashed border-gray-700 group-hover:border-cyan-500/50 rounded-2xl p-12 text-center transition-all cursor-pointer">
             <input
               type="file"
-              multiple={mode === 'hdr'}
+              multiple
               accept="image/*,.raw,.cr2,.cr3,.crw,.nef,.nrw,.arw,.srf,.sr2,.dng,.orf,.rw2,.pef,.ptx,.raf,.tiff,.tif,.heic,.heif"
               onChange={handleFileSelect}
               className="hidden"
@@ -508,7 +540,7 @@ export default function Home() {
                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  Upload 3-15+ photos • AI auto-groups by scene
+                  Single photo or 3-15+ brackets • AI auto-groups
                 </div>
               )}
               {mode === 'enhance' && (
@@ -615,16 +647,57 @@ export default function Home() {
               </div>
             </div>
 
+            {/* Perfect Edit Options */}
+            {mode === 'enhance' && (
+              <div className="bg-gray-900/50 backdrop-blur rounded-xl p-6 mb-8 border border-emerald-500/20">
+                <h3 className="text-sm font-semibold text-gray-300 mb-4 flex items-center gap-2">
+                  <svg className="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                  AI Enhancements
+                </h3>
+                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  {[
+                    { label: 'Window Pull', desc: 'Balance window exposure', value: windowPull, setter: setWindowPull },
+                    { label: 'Sky Enhance', desc: 'Boost blue sky', value: skyEnhance, setter: setSkyEnhance },
+                    { label: 'Perspective', desc: 'Straighten verticals', value: perspectiveCorrect, setter: setPerspectiveCorrect },
+                    { label: 'Denoise', desc: 'Reduce grain', value: noiseReduction, setter: setNoiseReduction },
+                    { label: 'Sharpen', desc: 'Crisp details', value: sharpening, setter: setSharpening },
+                  ].map(({ label, desc, value, setter }) => (
+                    <button
+                      key={label}
+                      onClick={() => setter(!value)}
+                      className={`p-3 rounded-lg text-left transition-all ${
+                        value
+                          ? 'bg-emerald-500/20 border border-emerald-500/40'
+                          : 'bg-gray-800/50 border border-gray-700 hover:border-gray-600'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-1">
+                        <span className={`text-sm font-medium ${value ? 'text-emerald-400' : 'text-gray-300'}`}>
+                          {label}
+                        </span>
+                        <span className={`w-2 h-2 rounded-full ${value ? 'bg-emerald-400' : 'bg-gray-600'}`} />
+                      </div>
+                      <p className="text-xs text-gray-500">{desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
             {/* Processing Progress Bar */}
             {processing && (
               <div className="mb-4">
                 <div className="flex justify-between text-sm mb-2">
-                  <span className="text-cyan-400 font-medium">{progressStatus}</span>
+                  <span className={`font-medium ${mode === 'enhance' ? 'text-emerald-400' : 'text-cyan-400'}`}>{progressStatus}</span>
                   <span className="text-gray-400">{progress}%</span>
                 </div>
                 <div className="h-3 bg-gray-800 rounded-full overflow-hidden">
                   <div
-                    className="h-full bg-gradient-to-r from-cyan-500 to-blue-500 rounded-full transition-all duration-500 ease-out"
+                    className={`h-full bg-gradient-to-r ${
+                      mode === 'enhance' ? 'from-emerald-500 to-teal-500' : 'from-cyan-500 to-blue-500'
+                    } rounded-full transition-all duration-500 ease-out`}
                     style={{ width: `${progress}%` }}
                   />
                 </div>
@@ -633,7 +706,7 @@ export default function Home() {
 
             <button
               onClick={processImages}
-              disabled={processing || (mode === 'hdr' && files.length < 2)}
+              disabled={processing || files.length === 0}
               className={`w-full py-4 bg-gradient-to-r ${
                 mode === 'enhance'
                   ? 'from-emerald-500 to-teal-500 hover:from-emerald-400 hover:to-teal-400 shadow-emerald-500/25 hover:shadow-emerald-500/40'
@@ -655,17 +728,17 @@ export default function Home() {
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                   </svg>
-                  {files.length > 5 ? `Process ${Math.ceil(files.length / 3)} Scenes` : `Merge ${files.length} Photos`}
+                  {files.length === 1 ? 'Enhance Photo' : files.length > 5 ? `Process ${Math.ceil(files.length / 3)} Scenes` : `Merge ${files.length} Photos`}
                 </span>
               ) : mode === 'enhance' ? (
                 <span className="flex items-center justify-center gap-2">
                   <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
                   </svg>
-                  Perfect Edit
+                  {files.length === 1 ? 'Perfect Edit' : `Perfect Edit ${files.length} Photos`}
                 </span>
               ) : (
-                'Convert to Twilight'
+                files.length === 1 ? 'Convert to Twilight' : `Convert ${files.length} to Twilight`
               )}
             </button>
           </div>
