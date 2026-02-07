@@ -8,14 +8,14 @@
 - Pro Engine auto-detection
 - Ready for backend connection
 
-**Backend (Mac Studio):** Pending
-- [ ] `mode=enhance` endpoint
-- [ ] Window pull processing
-- [ ] Sky enhancement
-- [ ] Perspective correction
-- [ ] Noise reduction
-- [ ] Sharpening
-- [ ] ngrok tunnel running
+**Backend (Mac Studio):** ✅ Running
+- [x] `mode=enhance` endpoint
+- [x] Window pull processing
+- [x] Sky enhancement
+- [x] Perspective correction
+- [x] Noise reduction
+- [x] Sharpening
+- [x] Cloudflare tunnel running
 
 ---
 
@@ -38,10 +38,10 @@
 | Service | URL | Status |
 |---------|-----|--------|
 | Frontend (Vercel) | https://hdr.it.com | ✅ Live |
-| Backend (ngrok) | `TBD` | ⏳ Pending |
+| Backend (Cloudflare) | https://aberdeen-relates-uncertainty-citizen.trycloudflare.com | ✅ Running |
 
 ---
 
 ## Last Updated
 - **Frontend:** 2026-02-06 - Perfect Edit v2.3.0 deployed
-- **Backend:** Awaiting update from Mac Studio
+- **Backend:** 2026-02-06 - Pro Processor v4.7.0 + enhance mode

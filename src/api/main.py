@@ -482,6 +482,125 @@ def merge_brackets_middle_base(images: List[np.ndarray]) -> np.ndarray:
 
 
 # ============================================
+# ENHANCE MODE PROCESSING (Perfect Edit)
+# ============================================
+
+def apply_enhance_processing(
+    img: np.ndarray,
+    brightness: float = 0,
+    contrast: float = 0,
+    vibrance: float = 0,
+    white_balance: float = 0,
+    window_pull: bool = True,
+    sky_enhance: bool = True,
+    perspective_correct: bool = True,
+    noise_reduction: bool = True,
+    sharpening: bool = True,
+) -> np.ndarray:
+    """
+    Apply Perfect Edit enhancement to a single image.
+    This is the mode=enhance processing pipeline.
+    """
+    result = img.copy()
+    h, w = result.shape[:2]
+
+    # 1. NOISE REDUCTION
+    if noise_reduction:
+        result = cv2.fastNlMeansDenoisingColored(result, None, 6, 6, 7, 21)
+
+    # 2. WHITE BALANCE CORRECTION
+    if white_balance != 0:
+        # Adjust color temperature
+        lab = cv2.cvtColor(result, cv2.COLOR_BGR2LAB).astype(np.float32)
+        lab[:, :, 2] = np.clip(lab[:, :, 2] + white_balance * 15, 0, 255)  # b channel (blue-yellow)
+        result = cv2.cvtColor(lab.astype(np.uint8), cv2.COLOR_LAB2BGR)
+
+    # 3. WINDOW PULL (balance window exposure)
+    if window_pull:
+        # Detect bright regions (windows) and balance them
+        gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        bright_mask = cv2.GaussianBlur(bright_mask, (21, 21), 0)
+        bright_mask_3ch = np.stack([bright_mask] * 3, axis=-1).astype(np.float32) / 255
+
+        # Darken windows slightly to recover detail
+        darkened = (result.astype(np.float32) * 0.75).astype(np.uint8)
+        result = (result.astype(np.float32) * (1 - bright_mask_3ch * 0.4) +
+                  darkened.astype(np.float32) * bright_mask_3ch * 0.4).astype(np.uint8)
+
+    # 4. SKY ENHANCEMENT (boost blue sky)
+    if sky_enhance:
+        # Target upper portion of image and blue regions
+        hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
+        # Blue hue range: 100-130
+        blue_mask = ((hsv[:, :, 0] > 90) & (hsv[:, :, 0] < 135) &
+                     (hsv[:, :, 1] > 30)).astype(np.float32)
+        # Weight by vertical position (stronger at top)
+        y_weight = np.linspace(1.0, 0.0, h).reshape(-1, 1)
+        blue_mask = blue_mask * y_weight
+        blue_mask = cv2.GaussianBlur(blue_mask.astype(np.float32), (31, 31), 0)
+
+        # Boost saturation in sky areas
+        hsv[:, :, 1] = np.clip(hsv[:, :, 1] + blue_mask * 40, 0, 255)
+        hsv[:, :, 2] = np.clip(hsv[:, :, 2] + blue_mask * 10, 0, 255)
+        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # 5. PERSPECTIVE CORRECTION (straighten verticals)
+    if perspective_correct and h > 100 and w > 100:
+        # Simple vertical straightening using edge detection
+        gray = cv2.cvtColor(result, cv2.COLOR_BGR2GRAY)
+        edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+        lines = cv2.HoughLinesP(edges, 1, np.pi/180, 100, minLineLength=h//4, maxLineGap=20)
+
+        if lines is not None and len(lines) > 0:
+            # Find near-vertical lines
+            angles = []
+            for line in lines:
+                x1, y1, x2, y2 = line[0]
+                if abs(x2 - x1) < abs(y2 - y1):  # More vertical than horizontal
+                    angle = np.arctan2(x2 - x1, y2 - y1) * 180 / np.pi
+                    if abs(angle) < 15:  # Within 15 degrees of vertical
+                        angles.append(angle)
+
+            if len(angles) > 2:
+                # Compute median angle correction
+                correction = np.median(angles)
+                if abs(correction) > 0.5 and abs(correction) < 10:
+                    # Apply rotation to straighten
+                    center = (w // 2, h // 2)
+                    M = cv2.getRotationMatrix2D(center, correction, 1.0)
+                    result = cv2.warpAffine(result, M, (w, h), borderMode=cv2.BORDER_REFLECT)
+
+    # 6. BRIGHTNESS & CONTRAST
+    if brightness != 0 or contrast != 0:
+        result = result.astype(np.float32)
+        # Brightness: shift
+        result = result + brightness * 30
+        # Contrast: scale around mid
+        if contrast != 0:
+            factor = 1 + contrast * 0.3
+            result = (result - 128) * factor + 128
+        result = np.clip(result, 0, 255).astype(np.uint8)
+
+    # 7. VIBRANCE (smart saturation)
+    if vibrance != 0:
+        hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
+        # Only boost low-saturation areas (vibrance vs saturation)
+        sat = hsv[:, :, 1]
+        boost = (1 - sat / 255) * vibrance * 30  # Less saturated = more boost
+        hsv[:, :, 1] = np.clip(sat + boost, 0, 255)
+        result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    # 8. SHARPENING
+    if sharpening:
+        # Unsharp mask
+        blurred = cv2.GaussianBlur(result, (0, 0), 2.0)
+        result = cv2.addWeighted(result, 1.3, blurred, -0.3, 0)
+
+    return result
+
+
+# ============================================
 # ROUTES
 # ============================================
 
@@ -614,11 +733,19 @@ async def test_processing():
 @app.post("/process")
 async def process_images(
     images: List[UploadFile] = File(..., description="Images to process"),
-    mode: str = Query("hdr", description="Processing mode: hdr or twilight"),
+    mode: str = Query("hdr", description="Processing mode: hdr, twilight, or enhance"),
     brightness: float = Query(0, ge=-2, le=2),
     contrast: float = Query(0, ge=-2, le=2),
     vibrance: float = Query(0, ge=-2, le=2),
     whiteBalance: float = Query(0, ge=-2, le=2),
+    white_balance: float = Query(None, ge=-2, le=2, description="Alias for whiteBalance"),
+    # Perfect Edit mode parameters (mode=enhance)
+    window_pull: bool = Query(True, description="Balance window exposure (enhance mode)"),
+    sky_enhance: bool = Query(True, description="Boost blue sky (enhance mode)"),
+    perspective_correct: bool = Query(True, description="Straighten verticals (enhance mode)"),
+    noise_reduction: bool = Query(True, description="Reduce grain (enhance mode)"),
+    sharpening: bool = Query(True, description="Sharpen details (enhance mode)"),
+    # Legacy params
     ai: bool = Query(False, description="Use AI-enhanced processing (SAM, YOLOv8, LaMa)"),
     grass: bool = Query(False, description="Enhance grass (vibrant green)"),
     signs: bool = Query(False, description="Remove signs (requires ai=true for best results)"),
@@ -626,13 +753,17 @@ async def process_images(
     """
     Main processing endpoint - matches Vercel frontend API.
 
-    - **HDR mode**: Upload 2-9 bracketed exposures, merges with Mertens fusion
-    - **Twilight mode**: Upload 1 daytime photo, converts to dusk
-    - **AI mode**: Use SAM + YOLOv8 + LaMa for 90% AutoHDR quality
+    Modes:
+    - **hdr**: 1 image = single-exposure HDR enhancement, 2+ = bracket merge
+    - **twilight**: 1 image = day-to-dusk conversion
+    - **enhance**: 1 image = full AI enhancement with Perfect Edit options
 
     Supports all RAW formats: ARW, CR2, NEF, DNG, etc.
     """
     start_time = time.time()
+
+    # Support both whiteBalance and white_balance params
+    wb = white_balance if white_balance is not None else whiteBalance
 
     # Validate
     if not images:
@@ -641,10 +772,16 @@ async def process_images(
     if not HAS_PROCESSOR:
         raise HTTPException(500, "Processor not available - check server logs")
 
+    # Validate mode
+    if mode not in ["hdr", "twilight", "enhance"]:
+        raise HTTPException(400, f"Invalid mode: {mode}. Use 'hdr', 'twilight', or 'enhance'")
+
     # Log request
     filenames = [img.filename for img in images]
     print(f"📸 Processing {len(images)} images: {filenames}")
-    print(f"   Mode: {mode}, Settings: b={brightness}, c={contrast}, v={vibrance}, wb={whiteBalance}")
+    print(f"   Mode: {mode}, Settings: b={brightness}, c={contrast}, v={vibrance}, wb={wb}")
+    if mode == "enhance":
+        print(f"   Perfect Edit: window={window_pull}, sky={sky_enhance}, persp={perspective_correct}, denoise={noise_reduction}, sharp={sharpening}")
 
     try:
         # ==========================================
@@ -663,8 +800,66 @@ async def process_images(
                 raise HTTPException(400, f"Failed to read {upload.filename}: {str(e)}")
 
         # ==========================================
-        # STEP 2: Process with Pro Processor (if available and multiple brackets)
+        # STEP 2: Mode-specific processing
         # ==========================================
+
+        # ENHANCE MODE: Full AI enhancement with Perfect Edit options
+        if mode == "enhance":
+            print(f"   🎨 Perfect Edit mode: {len(image_arrays)} image(s)")
+            results = []
+            for idx, img in enumerate(image_arrays):
+                enhanced = apply_enhance_processing(
+                    img,
+                    brightness=brightness,
+                    contrast=contrast,
+                    vibrance=vibrance,
+                    white_balance=wb,
+                    window_pull=window_pull,
+                    sky_enhance=sky_enhance,
+                    perspective_correct=perspective_correct,
+                    noise_reduction=noise_reduction,
+                    sharpening=sharpening,
+                )
+                results.append(enhanced)
+                print(f"   ✓ Enhanced image {idx+1}/{len(image_arrays)}")
+
+            # Return single image or batch
+            if len(results) == 1:
+                result_bytes = image_to_bytes(results[0], ".jpg", quality=95)
+                elapsed_ms = (time.time() - start_time) * 1000
+                return Response(
+                    content=result_bytes,
+                    media_type="image/jpeg",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="hdrit_enhance.jpg"',
+                        "Content-Length": str(len(result_bytes)),
+                        "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                        "X-Images-Processed": "1",
+                        "X-Processor": f"Pro v{PRO_VERSION}" if HAS_PRO_PROCESSOR else "Standard",
+                        "Access-Control-Allow-Origin": "*",
+                    }
+                )
+            else:
+                # Multiple images - return as ZIP
+                import zipfile
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for i, result in enumerate(results):
+                        img_bytes = image_to_bytes(result, ".jpg", quality=95)
+                        zf.writestr(f"hdrit_enhance_{i+1:02d}.jpg", img_bytes)
+                zip_buffer.seek(0)
+                elapsed_ms = (time.time() - start_time) * 1000
+                return Response(
+                    content=zip_buffer.getvalue(),
+                    media_type="application/zip",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="hdrit_enhance_batch.zip"',
+                        "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                        "X-Images-Processed": str(len(results)),
+                    }
+                )
+
+        # HDR MODE: Single image enhancement or bracket merge
         if len(image_arrays) > 1 and HAS_PRO_PROCESSOR:
             pro_settings = ProSettings(
                 brightness=brightness,
