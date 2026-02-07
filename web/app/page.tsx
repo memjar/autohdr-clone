@@ -14,7 +14,7 @@ const isClerkConfigured = typeof window !== 'undefined'
   ? !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
   : !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
 
-const APP_VERSION = 'v3.2.0'
+const APP_VERSION = 'v3.3.0'
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://hdr.it.com.ngrok.pro'
 
 const RAW_EXTENSIONS = [
@@ -210,11 +210,19 @@ export default function Home() {
         params.set('sharpening', sharpening.toString())
       }
 
-      const apiUrl = `/api/process?${params}`
-
       // Calculate total file size for progress display
       const totalSize = files.reduce((acc, f) => acc + f.size, 0)
       const totalSizeMB = (totalSize / 1024 / 1024).toFixed(1)
+
+      // For large files (>4MB), send directly to backend to bypass Vercel's payload limit
+      // Vercel serverless has 4.5MB limit, ARW files are 25-50MB each
+      const useDirectBackend = totalSize > 4 * 1024 * 1024
+      const apiUrl = useDirectBackend
+        ? `${DEFAULT_BACKEND_URL}/process?${params}`
+        : `/api/process?${params}`
+
+      console.log('Upload strategy:', useDirectBackend ? 'DIRECT to backend' : 'via Vercel proxy')
+      console.log('API URL:', apiUrl)
 
       // Use XMLHttpRequest for upload progress
       console.log('Starting upload to:', apiUrl)
