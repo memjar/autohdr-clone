@@ -14,7 +14,7 @@ const isClerkConfigured = typeof window !== 'undefined'
   ? !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
   : !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
 
-const APP_VERSION = 'v3.1.0'
+const APP_VERSION = 'v3.2.0'
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://hdr.it.com.ngrok.pro'
 
 const RAW_EXTENSIONS = [
@@ -55,6 +55,8 @@ export default function Home() {
 
   const [progress, setProgress] = useState(0)
   const [progressStatus, setProgressStatus] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [isUploading, setIsUploading] = useState(false)
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
 
@@ -135,41 +137,14 @@ export default function Home() {
     if (files.length === 0) return
 
     setProcessing(true)
+    setIsUploading(true)
     setResult(null)
     setResultUrl(null)
     setOriginalUrl(null)
     setError(null)
     setProgress(0)
-    setProgressStatus('Uploading...')
-
-    const stages = mode === 'enhance' ? [
-      { pct: 15, msg: 'Analyzing image...' },
-      { pct: 30, msg: 'Correcting exposure...' },
-      { pct: 45, msg: 'Balancing colors...' },
-      { pct: 60, msg: 'Enhancing details...' },
-      { pct: 75, msg: 'Applying corrections...' },
-      { pct: 90, msg: 'Finalizing...' },
-    ] : mode === 'twilight' ? [
-      { pct: 20, msg: 'Analyzing scene...' },
-      { pct: 45, msg: 'Generating sky...' },
-      { pct: 70, msg: 'Blending lights...' },
-      { pct: 90, msg: 'Finalizing...' },
-    ] : [
-      { pct: 15, msg: 'Reading files...' },
-      { pct: 35, msg: 'Aligning brackets...' },
-      { pct: 55, msg: 'Merging exposures...' },
-      { pct: 75, msg: 'Tone mapping...' },
-      { pct: 90, msg: 'Finalizing...' },
-    ]
-
-    let stageIndex = 0
-    progressInterval.current = setInterval(() => {
-      if (stageIndex < stages.length) {
-        setProgress(stages[stageIndex].pct)
-        setProgressStatus(stages[stageIndex].msg)
-        stageIndex++
-      }
-    }, 1500)
+    setUploadProgress(0)
+    setProgressStatus('Preparing upload...')
 
     try {
       const originalFile = files[Math.floor(files.length / 2)]
@@ -197,23 +172,86 @@ export default function Home() {
       }
 
       const apiUrl = `/api/process?${params}`
-      const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 300000)
 
-      const response = await fetch(apiUrl, {
-        method: 'POST',
-        body: formData,
-        signal: controller.signal,
+      // Calculate total file size for progress display
+      const totalSize = files.reduce((acc, f) => acc + f.size, 0)
+      const totalSizeMB = (totalSize / 1024 / 1024).toFixed(1)
+
+      // Use XMLHttpRequest for upload progress
+      const blob = await new Promise<Blob>((resolve, reject) => {
+        const xhr = new XMLHttpRequest()
+
+        xhr.upload.addEventListener('progress', (e) => {
+          if (e.lengthComputable) {
+            const pct = Math.round((e.loaded / e.total) * 100)
+            setUploadProgress(pct)
+            setProgress(Math.round(pct * 0.5)) // Upload is 50% of total progress
+            const uploadedMB = (e.loaded / 1024 / 1024).toFixed(1)
+            setProgressStatus(`Uploading... ${uploadedMB}MB / ${totalSizeMB}MB`)
+          }
+        })
+
+        xhr.upload.addEventListener('load', () => {
+          setIsUploading(false)
+          setProgress(50)
+          setProgressStatus('Processing on server...')
+
+          // Start processing progress simulation
+          const stages = mode === 'enhance' ? [
+            { pct: 55, msg: 'Analyzing image...' },
+            { pct: 65, msg: 'Correcting exposure...' },
+            { pct: 75, msg: 'Balancing colors...' },
+            { pct: 85, msg: 'Enhancing details...' },
+            { pct: 92, msg: 'Finalizing...' },
+          ] : mode === 'twilight' ? [
+            { pct: 60, msg: 'Analyzing scene...' },
+            { pct: 75, msg: 'Generating sky...' },
+            { pct: 88, msg: 'Blending lights...' },
+          ] : [
+            { pct: 55, msg: 'Denoising...' },
+            { pct: 65, msg: 'HDR fusion...' },
+            { pct: 75, msg: 'Tone mapping...' },
+            { pct: 85, msg: 'Color correction...' },
+            { pct: 92, msg: 'Finalizing...' },
+          ]
+
+          let stageIndex = 0
+          progressInterval.current = setInterval(() => {
+            if (stageIndex < stages.length) {
+              setProgress(stages[stageIndex].pct)
+              setProgressStatus(stages[stageIndex].msg)
+              stageIndex++
+            }
+          }, 1200)
+        })
+
+        xhr.addEventListener('load', () => {
+          if (progressInterval.current) {
+            clearInterval(progressInterval.current)
+            progressInterval.current = null
+          }
+
+          if (xhr.status === 200) {
+            resolve(xhr.response)
+          } else {
+            reject(new Error(`Processing failed: ${xhr.status}`))
+          }
+        })
+
+        xhr.addEventListener('error', () => {
+          reject(new Error('Network error - check your connection'))
+        })
+
+        xhr.addEventListener('timeout', () => {
+          reject(new Error('Request timed out'))
+        })
+
+        xhr.responseType = 'blob'
+        xhr.timeout = 300000 // 5 minutes
+        xhr.open('POST', apiUrl)
+        xhr.send(formData)
       })
 
-      clearTimeout(timeoutId)
-
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({}))
-        throw new Error(errorData.error || `Processing failed: ${response.status}`)
-      }
-
-      const blob = await response.blob()
       if (blob.size < 1000) throw new Error('Invalid response from server')
 
       const url = URL.createObjectURL(blob)
@@ -230,9 +268,9 @@ export default function Home() {
       a.click()
       document.body.removeChild(a)
     } catch (err: any) {
-      if (err.name === 'AbortError') {
+      if (err.message.includes('timeout')) {
         setError('Request timed out. Check if the backend is accessible.')
-      } else if (err.message.includes('Failed to fetch')) {
+      } else if (err.message.includes('Network') || err.message.includes('fetch')) {
         setError('Cannot connect to backend. Check your connection.')
       } else {
         setError(err.message || 'Processing failed')
@@ -243,6 +281,7 @@ export default function Home() {
         progressInterval.current = null
       }
       setProcessing(false)
+      setIsUploading(false)
     }
   }
 
@@ -589,15 +628,32 @@ export default function Home() {
               {processing && (
                 <div className="mb-6">
                   <div className="flex justify-between text-sm mb-2">
-                    <span className="text-white">{progressStatus}</span>
+                    <span className="text-white flex items-center gap-2">
+                      {isUploading ? (
+                        <svg className="w-4 h-4 animate-pulse text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                          <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                        </svg>
+                      ) : (
+                        <svg className="w-4 h-4 animate-spin text-green-400" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                        </svg>
+                      )}
+                      {progressStatus}
+                    </span>
                     <span className="text-gray-400">{progress}%</span>
                   </div>
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-3 bg-white/10 rounded-full overflow-hidden">
                     <div
-                      className="h-full bg-white rounded-full transition-all duration-300"
+                      className={`h-full rounded-full transition-all duration-300 ${
+                        isUploading ? 'bg-blue-500' : 'bg-green-500'
+                      }`}
                       style={{ width: `${progress}%` }}
                     />
                   </div>
+                  <p className="text-xs text-gray-500 mt-2">
+                    {isUploading ? 'Please wait while your files upload...' : 'Processing with Bulletproof v6.0.8...'}
+                  </p>
                 </div>
               )}
 
@@ -605,16 +661,31 @@ export default function Home() {
               <button
                 onClick={processImages}
                 disabled={processing || files.length === 0}
-                className="w-full py-4 rounded-xl font-semibold text-black bg-white hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2"
+                className={`w-full py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                  processing
+                    ? isUploading
+                      ? 'bg-blue-500 text-white cursor-wait'
+                      : 'bg-green-500 text-white cursor-wait'
+                    : 'bg-white text-black hover:bg-gray-100 disabled:opacity-50 disabled:cursor-not-allowed'
+                }`}
               >
                 {processing ? (
-                  <>
-                    <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
-                    </svg>
-                    Processing...
-                  </>
+                  isUploading ? (
+                    <>
+                      <svg className="w-5 h-5 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                        <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
+                      </svg>
+                      Uploading {uploadProgress}%...
+                    </>
+                  ) : (
+                    <>
+                      <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
+                      </svg>
+                      Processing...
+                    </>
+                  )
                 ) : (
                   <>
                     <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
