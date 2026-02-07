@@ -1,6 +1,18 @@
 'use client'
 
 import { useState, useCallback, useRef, useEffect } from 'react'
+import {
+  SignInButton,
+  SignUpButton,
+  SignedIn,
+  SignedOut,
+  UserButton,
+} from '@clerk/nextjs'
+
+// Check if Clerk is configured
+const isClerkConfigured = typeof window !== 'undefined'
+  ? !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
+  : !!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.startsWith('pk_')
 
 const APP_VERSION = 'v3.0.0'
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://hdr.it.com.ngrok.pro'
@@ -330,13 +342,42 @@ export default function Home() {
               </div>
               <span className="font-semibold text-white text-lg">HDRit</span>
             </a>
-            <div className="flex items-center gap-6">
+            <div className="flex items-center gap-4 sm:gap-6">
               <a href="/about" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">About</a>
               <a href="/pricing" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Pricing</a>
-              <a href="/dashboard" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Dashboard</a>
-              <a href="/dashboard" className="px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/15 rounded-lg transition">
-                Sign In
-              </a>
+              {isClerkConfigured ? (
+                <>
+                  <SignedIn>
+                    <a href="/dashboard" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Dashboard</a>
+                    <UserButton
+                      appearance={{
+                        elements: {
+                          avatarBox: 'w-8 h-8',
+                        },
+                      }}
+                    />
+                  </SignedIn>
+                  <SignedOut>
+                    <SignInButton mode="modal">
+                      <button className="px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/15 rounded-lg transition">
+                        Sign In
+                      </button>
+                    </SignInButton>
+                    <SignUpButton mode="modal">
+                      <button className="hidden sm:block px-4 py-2 text-sm font-medium text-white bg-blue-600 hover:bg-blue-500 rounded-lg transition">
+                        Get Started
+                      </button>
+                    </SignUpButton>
+                  </SignedOut>
+                </>
+              ) : (
+                <>
+                  <a href="/dashboard" className="hidden sm:block text-sm text-gray-400 hover:text-white transition">Dashboard</a>
+                  <a href="/dashboard" className="px-4 py-2 text-sm font-medium text-white bg-white/10 hover:bg-white/15 rounded-lg transition">
+                    Sign In
+                  </a>
+                </>
+              )}
             </div>
           </div>
         </div>

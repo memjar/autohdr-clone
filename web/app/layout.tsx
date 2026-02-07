@@ -1,5 +1,10 @@
 import type { Metadata, Viewport } from 'next'
+import { ClerkProvider } from '@clerk/nextjs'
 import './globals.css'
+
+// Check if Clerk keys are configured
+const clerkPubKey = process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
+const isClerkConfigured = clerkPubKey && clerkPubKey.startsWith('pk_')
 
 export const viewport: Viewport = {
   width: 'device-width',
@@ -53,7 +58,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode
 }) {
-  return (
+  const content = (
     <html lang="en" className="antialiased">
       <head>
         {/* Preconnect to backend for faster API calls */}
@@ -69,4 +74,26 @@ export default function RootLayout({
       </body>
     </html>
   )
+
+  // Only wrap with ClerkProvider if keys are configured
+  if (isClerkConfigured) {
+    return (
+      <ClerkProvider
+        appearance={{
+          variables: {
+            colorPrimary: '#3b82f6',
+            colorBackground: '#0a0a0f',
+            colorText: '#ffffff',
+            colorTextSecondary: '#9ca3af',
+            colorInputBackground: '#1f2937',
+            colorInputText: '#ffffff',
+          },
+        }}
+      >
+        {content}
+      </ClerkProvider>
+    )
+  }
+
+  return content
 }
