@@ -85,25 +85,28 @@ HAS_TWILIGHT = False
 # ============================================
 
 app = FastAPI(
-    title="AutoHDR Clone API",
-    description="Open-source AI real estate photo editing with RAW support",
-    version="1.0.0",
+    title="HDRit API",
+    description="Professional real estate photo editing with full RAW support",
+    version="2.0.0",
     docs_url="/docs",
     redoc_url="/redoc",
 )
 
-# CORS for web frontend
+# CORS for web frontend - allow large file uploads
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
         "http://localhost:3000",
+        "https://hdr.it.com",
         "https://autohdr-clone.vercel.app",
         "https://*.vercel.app",
-        "*"  # Allow all for development
+        "*"  # Allow all for tunnel access
     ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["Content-Length", "X-Processing-Time-Ms", "X-Processor", "X-Images-Processed"],
+    max_age=3600,  # Cache preflight for 1 hour
 )
 
 
