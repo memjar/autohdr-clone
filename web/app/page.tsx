@@ -230,7 +230,7 @@ export default function Home() {
 
       const apiUrl = useLocalBackend ? `${backendUrl}/process?${params}` : `/api/process?${params}`
       const controller = new AbortController()
-      const timeoutId = setTimeout(() => controller.abort(), 120000)
+      const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 min for large RAW files
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -250,9 +250,17 @@ export default function Home() {
 
       const url = URL.createObjectURL(blob)
       setProgress(100)
-      setProgressStatus('Complete')
+      setProgressStatus('Complete!')
       setResultUrl(url)
       setResult('Processing complete!')
+
+      // Auto-download result
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `hdrit_${mode}_${Date.now()}.jpg`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
     } catch (err: any) {
       if (err.name === 'AbortError') {
         setError('Request timed out. Check if the backend is accessible.')
