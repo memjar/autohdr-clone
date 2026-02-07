@@ -76,6 +76,16 @@ except ImportError as e:
     BP_VERSION = None
     print(f"ℹ️  Bulletproof Processor not available: {e}")
 
+# Turbo Mode - 4x faster processing (Apple Silicon optimized)
+try:
+    from src.core.performance import TurboProcessor, get_turbo_status, TURBO_VERSION
+    HAS_TURBO = True
+    turbo_status = get_turbo_status()
+    print(f"🚀 Turbo Mode v{TURBO_VERSION} - {turbo_status['opencv_threads']} threads, GPU: {turbo_status['gpu_available']}")
+except ImportError as e:
+    HAS_TURBO = False
+    TURBO_VERSION = None
+
 # Smart Processor v1.0 - Room-aware + Lens correction
 try:
     from src.core.smart_processor import SmartProcessor, SMART_PROCESSOR_VERSION
@@ -683,6 +693,7 @@ async def health():
                 ] if HAS_PROCESSOR else []
             },
             "ai_processor": {"installed": HAS_AI_PROCESSOR, "note": "SAM + YOLOv8 + LaMa"},
+            "turbo_mode": get_turbo_status() if HAS_TURBO else {"turbo_available": False},
             "pro_processor": {
                 "installed": HAS_PRO_PROCESSOR,
                 "version": PRO_VERSION if HAS_PRO_PROCESSOR else None,
@@ -902,8 +913,13 @@ async def process_images(
             )
             processor = BulletproofProcessor(bp_settings)
 
-            # Process brackets with bulletproof processor
-            print(f"   🔥 Using Bulletproof Processor v{BP_VERSION} for {len(image_arrays)} brackets...")
+            # Wrap with TurboProcessor for 4x speed boost
+            if HAS_TURBO:
+                processor = TurboProcessor(processor)
+                print(f"   🚀 Using Bulletproof v{BP_VERSION} + Turbo Mode for {len(image_arrays)} brackets...")
+            else:
+                print(f"   🔥 Using Bulletproof Processor v{BP_VERSION} for {len(image_arrays)} brackets...")
+
             result = processor.process_brackets(image_arrays)
 
             # Encode and return
@@ -940,8 +956,13 @@ async def process_images(
                 brighten_amount=1.85,  # INCREASED - target has bright white walls
             )
             processor = BulletproofProcessor(bp_settings)
+            # Wrap with TurboProcessor for 4x speed boost
+            if HAS_TURBO:
+                processor = TurboProcessor(processor)
+                proc_version = f"Bulletproof v{BP_VERSION} + Turbo"
+            else:
+                proc_version = f"Bulletproof v{BP_VERSION}"
             result = processor.process(base_image)
-            proc_version = f"Bulletproof v{BP_VERSION}"
         elif HAS_CLEAN_PROCESSOR:
             clean_settings = CleanSettings(preset='natural')
             processor = HDRitProcessor(clean_settings)
