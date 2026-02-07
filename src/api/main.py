@@ -66,15 +66,42 @@ except ImportError as e:
     HAS_AI_PROCESSOR = False
     print(f"ℹ️  AI processor not available (install ai-requirements.txt for 90% quality)")
 
-# Pro Processor v3.0 - THE golden implementation (95%+ AutoHDR quality)
+# Bulletproof Processor v6.0 - Production-grade, zero grain
+try:
+    from src.core.processor_bulletproof import BulletproofProcessor, BulletproofSettings, PROCESSOR_VERSION as BP_VERSION
+    HAS_BULLETPROOF = True
+    print(f"✓ Bulletproof Processor v{BP_VERSION} loaded - Zero grain, crystal clear")
+except ImportError as e:
+    HAS_BULLETPROOF = False
+    BP_VERSION = None
+    print(f"ℹ️  Bulletproof Processor not available: {e}")
+
+# Smart Processor v1.0 - Room-aware + Lens correction
+try:
+    from src.core.smart_processor import SmartProcessor, SMART_PROCESSOR_VERSION
+    from src.core.room_classifier import RoomType
+    HAS_SMART = True
+    print(f"✓ Smart Processor v{SMART_PROCESSOR_VERSION} loaded - Room detection + Lens correction")
+except ImportError as e:
+    HAS_SMART = False
+    SMART_PROCESSOR_VERSION = None
+    print(f"ℹ️  Smart Processor not available: {e}")
+
+# Clean Processor v5.0 - Fallback
+try:
+    from src.core.processor_clean import HDRitProcessor, Settings as CleanSettings, PROCESSOR_VERSION as CLEAN_VERSION
+    HAS_CLEAN_PROCESSOR = True
+except ImportError as e:
+    HAS_CLEAN_PROCESSOR = False
+    CLEAN_VERSION = None
+
+# Legacy Pro Processor (fallback)
 try:
     from src.core.processor_v3 import AutoHDRProProcessor, ProSettings, PROCESSOR_VERSION as PRO_VERSION
     HAS_PRO_PROCESSOR = True
-    print(f"✓ Pro Processor v{PRO_VERSION} loaded - 95%+ AutoHDR quality")
-except ImportError as e:
+except ImportError:
     HAS_PRO_PROCESSOR = False
     PRO_VERSION = None
-    print(f"ℹ️  Pro Processor not available: {e}")
 
 # Optional modules
 HAS_HDR_MERGER = False
@@ -863,135 +890,74 @@ async def process_images(
                 )
 
         # HDR MODE: Single image enhancement or bracket merge
-        if len(image_arrays) > 1 and HAS_PRO_PROCESSOR:
-            pro_settings = ProSettings(
-                brightness=brightness,
-                contrast=contrast,
-                vibrance=vibrance,
-                white_balance=whiteBalance,
+        # Use Bulletproof Processor v6.0 (production-grade, zero grain)
+        if len(image_arrays) > 1 and HAS_BULLETPROOF:
+            bp_settings = BulletproofSettings(
+                preset='professional',
+                denoise_strength='extreme',  # MAX denoising - zero grain
+                sharpen=True,
+                brighten=True,
             )
-            pro_processor = AutoHDRProProcessor(pro_settings)
+            processor = BulletproofProcessor(bp_settings)
 
-            # Check if this looks like multiple scenes (more than typical bracket count)
-            if len(image_arrays) > 5:
-                # Multi-scene processing: auto-group by scene
-                print(f"   🎯 Multi-scene mode: {len(image_arrays)} images, auto-grouping...")
-                results = pro_processor.process_multiple_scenes(image_arrays, auto_group=True)
+            # Process brackets with bulletproof processor
+            print(f"   🔥 Using Bulletproof Processor v{BP_VERSION} for {len(image_arrays)} brackets...")
+            result = processor.process_brackets(image_arrays)
 
-                if len(results) == 1:
-                    # Single scene detected
-                    result = results[0]
-                    result_bytes = image_to_bytes(result, ".jpg", quality=98)
-                    elapsed_ms = (time.time() - start_time) * 1000
-                    print(f"   ✓ Single scene processed in {elapsed_ms:.0f}ms")
+            # Encode and return
+            result_bytes = image_to_bytes(result, ".jpg", quality=95)
+            elapsed_ms = (time.time() - start_time) * 1000
+            print(f"   ✓ Clean Processor complete in {elapsed_ms:.0f}ms")
+            print(f"   📦 Response size: {len(result_bytes) / 1024:.1f} KB")
 
-                    return Response(
-                        content=result_bytes,
-                        media_type="image/jpeg",
-                        headers={
-                            "Content-Disposition": f'attachment; filename="hdrit_{mode}_1.jpg"',
-                            "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
-                            "X-Images-Processed": str(len(images)),
-                            "X-Scenes-Detected": "1",
-                            "X-Processor": f"Pro v{PRO_VERSION}",
-                        }
-                    )
-                else:
-                    # Multiple scenes - return as ZIP
-                    import zipfile
-                    zip_buffer = io.BytesIO()
-                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
-                        for i, result in enumerate(results):
-                            img_bytes = image_to_bytes(result, ".jpg", quality=98)
-                            zf.writestr(f"hdrit_scene_{i+1:02d}.jpg", img_bytes)
-
-                    zip_buffer.seek(0)
-                    elapsed_ms = (time.time() - start_time) * 1000
-                    print(f"   ✓ {len(results)} scenes processed in {elapsed_ms:.0f}ms")
-
-                    return Response(
-                        content=zip_buffer.getvalue(),
-                        media_type="application/zip",
-                        headers={
-                            "Content-Disposition": f'attachment; filename="hdrit_batch_{len(results)}_scenes.zip"',
-                            "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
-                            "X-Images-Processed": str(len(images)),
-                            "X-Scenes-Detected": str(len(results)),
-                            "X-Processor": f"Pro v{PRO_VERSION}",
-                        }
-                    )
-            else:
-                # Standard bracket processing (2-5 images = single scene)
-                print(f"   🔥 Using Pro Processor v{PRO_VERSION} for {len(image_arrays)} brackets...")
-                result = pro_processor.process_brackets(image_arrays)
-
-                # Encode and return directly - Pro processor handles everything
-                result_bytes = image_to_bytes(result, ".jpg", quality=95)
-                elapsed_ms = (time.time() - start_time) * 1000
-                print(f"   ✓ Pro Processor complete in {elapsed_ms:.0f}ms")
-                print(f"   📦 Response size: {len(result_bytes) / 1024:.1f} KB")
-
-                return Response(
-                    content=result_bytes,
-                    media_type="image/jpeg",
-                    headers={
-                        "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
-                        "Content-Length": str(len(result_bytes)),
-                        "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
-                        "X-Images-Processed": str(len(images)),
-                        "X-Processor": f"Pro v{PRO_VERSION}",
-                        "Access-Control-Allow-Origin": "*",
-                        "Access-Control-Expose-Headers": "Content-Length, X-Processing-Time-Ms, X-Processor",
-                        "Cache-Control": "no-cache",
-                    }
-                )
-
-        # Fallback: merge brackets with legacy fusion
-        if len(image_arrays) > 1:
-            print(f"   Merging {len(image_arrays)} brackets with middle-base fusion...")
-            base_image = merge_brackets_middle_base(image_arrays)
-        else:
-            base_image = image_arrays[0]
-
-        # ==========================================
-        # STEP 3: Process (Basic or AI-Enhanced)
-        # ==========================================
-        if ai and HAS_AI_PROCESSOR:
-            print("   🤖 Using AI-enhanced processing (SAM + YOLOv8 + LaMa)...")
-            ai_settings = AIProcessingSettings(
-                brightness=brightness,
-                contrast=contrast,
-                vibrance=vibrance,
-                white_balance=whiteBalance,
-                twilight_style="pink" if mode == "twilight" else None,
-                grass_enhancement=grass,
-                sign_removal=signs,
-                use_ai_segmentation=True,
-                use_ai_detection=True,
-                use_ai_inpainting=signs,  # Only use LaMa if removing signs
+            return Response(
+                content=result_bytes,
+                media_type="image/jpeg",
+                headers={
+                    "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
+                    "Content-Length": str(len(result_bytes)),
+                    "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                    "X-Images-Processed": str(len(images)),
+                    "X-Processor": f"Clean v{CLEAN_VERSION}",
+                    "Access-Control-Allow-Origin": "*",
+                    "Access-Control-Expose-Headers": "Content-Length, X-Processing-Time-Ms, X-Processor",
+                    "Cache-Control": "no-cache",
+                }
             )
-            processor = AIEnhancedProcessor(ai_settings)
+
+        # Single image processing with bulletproof processor
+        base_image = image_arrays[0]
+        print("   Applying HDR processing with Bulletproof Processor...")
+
+        if HAS_BULLETPROOF:
+            bp_settings = BulletproofSettings(
+                preset='professional',
+                denoise_strength='extreme',  # MAX denoising - zero grain
+                sharpen=True,
+                brighten=True,
+            )
+            processor = BulletproofProcessor(bp_settings)
             result = processor.process(base_image)
+            proc_version = f"Bulletproof v{BP_VERSION}"
+        elif HAS_CLEAN_PROCESSOR:
+            clean_settings = CleanSettings(preset='natural')
+            processor = HDRitProcessor(clean_settings)
+            result = processor.process(base_image)
+            proc_version = f"Clean v{CLEAN_VERSION}"
         else:
-            if ai and not HAS_AI_PROCESSOR:
-                print("   ⚠️ AI processor not available, using basic processing")
-            print("   Applying HDR processing...")
+            # Legacy fallback
             settings = ProcessingSettings(
                 brightness=brightness,
                 contrast=contrast,
                 vibrance=vibrance,
                 white_balance=whiteBalance,
-                twilight_style="pink" if mode == "twilight" else None,
-                grass_replacement=grass,
-                sign_removal=signs,
             )
             processor = AutoHDRProcessor(settings)
             result = processor.process(base_image)
+            proc_version = "Legacy"
 
-        # ==========================================
-        # STEP 3: Encode and return
-        # ==========================================
-        result_bytes = image_to_bytes(result, ".jpg", quality=98)  # Full resolution output
+        # Encode and return
+        result_bytes = image_to_bytes(result, ".jpg", quality=95)
 
         elapsed_ms = (time.time() - start_time) * 1000
         print(f"   ✓ Complete in {elapsed_ms:.0f}ms, output: {len(result_bytes)} bytes")
@@ -1000,9 +966,10 @@ async def process_images(
             content=result_bytes,
             media_type="image/jpeg",
             headers={
-                "Content-Disposition": f'attachment; filename="autohdr_{mode}.jpg"',
+                "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
                 "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
                 "X-Images-Processed": str(len(images)),
+                "X-Processor": proc_version,
             }
         )
 
