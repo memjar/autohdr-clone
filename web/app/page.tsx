@@ -3,7 +3,7 @@
 import { useState, useCallback, useRef, useEffect } from 'react'
 
 // Version for cache-busting verification
-const APP_VERSION = 'v2.3.0'
+const APP_VERSION = 'v2.3.1'
 
 // Backend URL from environment variable or default
 const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'http://192.168.1.147:8000'
