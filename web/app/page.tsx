@@ -660,9 +660,9 @@ export default function Home() {
                   <p className="text-gray-500 text-xs sm:text-sm mb-3 sm:mb-4">
                     Drag & drop or tap to browse
                   </p>
-                  <button className="px-5 py-2 sm:px-6 sm:py-2.5 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition text-sm">
+                  <span className="inline-block px-5 py-2 sm:px-6 sm:py-2.5 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition text-sm cursor-pointer">
                     Select Files
-                  </button>
+                  </span>
                   <p className="text-[10px] sm:text-xs text-gray-600 mt-2 sm:mt-3">
                     JPG, PNG, RAW, TIFF, HEIC
                   </p>
