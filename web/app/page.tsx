@@ -28,6 +28,45 @@ const isRawFile = (filename: string): boolean => {
   return RAW_EXTENSIONS.includes(ext)
 }
 
+// Professional SVG Icons
+const Icons = {
+  hdr: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+    </svg>
+  ),
+  flambient: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z" />
+    </svg>
+  ),
+  twilight: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" />
+    </svg>
+  ),
+  grass: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+    </svg>
+  ),
+  removal: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M19.428 15.428a2 2 0 00-1.022-.547l-2.387-.477a6 6 0 00-3.86.517l-.318.158a6 6 0 01-3.86.517L6.05 15.21a2 2 0 00-1.806.547M8 4h8l-1 1v5.172a2 2 0 00.586 1.414l5 5c1.26 1.26.367 3.414-1.415 3.414H4.828c-1.782 0-2.674-2.154-1.414-3.414l5-5A2 2 0 009 10.172V5L8 4z" />
+    </svg>
+  ),
+  staging: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M20 7l-8-4-8 4m16 0l-8 4m8-4v10l-8 4m0-10L4 7m8 4v10M4 7v10l8 4" />
+    </svg>
+  ),
+  cloud: (
+    <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 15a4 4 0 004 4h9a5 5 0 10-.1-9.999 5.002 5.002 0 10-9.78 2.096A4.001 4.001 0 003 15z" />
+    </svg>
+  ),
+}
+
 export default function Home() {
   const [files, setFiles] = useState<File[]>([])
   const [processing, setProcessing] = useState(false)
@@ -271,39 +310,42 @@ export default function Home() {
   }
 
   const services = [
-    { id: 'hdr', name: 'HDR Editing', desc: 'Blend multiple exposures perfectly', icon: '🏠' },
-    { id: 'enhance', name: 'Flambient Editing', desc: 'Flash + ambient blend', icon: '💡' },
-    { id: 'twilight', name: 'Day to Dusk', desc: 'Transform to twilight', icon: '🌅' },
-    { id: 'grass', name: 'Grass Greening', desc: 'Enhance lawn color', icon: '🌿' },
-    { id: 'removal', name: 'Item Removal', desc: 'Remove unwanted objects', icon: '✨' },
-    { id: 'staging', name: 'Virtual Staging', desc: 'Add virtual furniture', icon: '🛋️' },
+    { id: 'hdr', name: 'HDR Editing', desc: 'Blend multiple exposures perfectly', icon: Icons.hdr },
+    { id: 'enhance', name: 'Flambient Editing', desc: 'Flash + ambient blend', icon: Icons.flambient },
+    { id: 'twilight', name: 'Day to Dusk', desc: 'Transform to twilight', icon: Icons.twilight },
+    { id: 'grass', name: 'Grass Greening', desc: 'Enhance lawn color', icon: Icons.grass },
+    { id: 'removal', name: 'Item Removal', desc: 'Remove unwanted objects', icon: Icons.removal },
+    { id: 'staging', name: 'Virtual Staging', desc: 'Add virtual furniture', icon: Icons.staging },
   ]
 
   return (
     <main className="min-h-screen bg-black">
-      {/* Navigation - AutoHDR Style */}
-      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/90 backdrop-blur-sm border-b border-white/5">
+      {/* Navigation - Desktop */}
+      <nav className="fixed top-0 left-0 right-0 z-50 bg-black/95 backdrop-blur-md border-b border-white/5">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between h-16">
             {/* Logo */}
-            <a href="/" className="flex items-center gap-2">
-              <span className="text-2xl font-bold text-white">HDRit</span>
+            <a href="/" className="flex items-center gap-2 shrink-0">
+              <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center">
+                <span className="text-white font-bold text-sm">H</span>
+              </div>
+              <span className="text-xl font-bold text-white">HDRit</span>
             </a>
 
-            {/* Desktop Nav */}
-            <div className="hidden md:flex items-center gap-8">
-              <a href="/pricing" className="text-sm text-gray-300 hover:text-white transition">Pricing</a>
-              <a href="/dashboard" className="text-sm text-gray-300 hover:text-white transition">Studio</a>
-              <a href="/about" className="text-sm text-gray-300 hover:text-white transition">About</a>
-              <a href="mailto:support@hdr.it.com" className="text-sm text-gray-300 hover:text-white transition">Contact</a>
+            {/* Desktop Nav - Centered */}
+            <div className="hidden md:flex items-center gap-1 absolute left-1/2 -translate-x-1/2">
+              <a href="/pricing" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Pricing</a>
+              <a href="/dashboard" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Studio</a>
+              <a href="/about" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">About</a>
+              <a href="mailto:support@hdr.it.com" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Contact</a>
             </div>
 
-            {/* Auth Buttons */}
-            <div className="hidden md:flex items-center gap-4">
+            {/* Desktop Auth */}
+            <div className="hidden md:flex items-center gap-3 shrink-0">
               {isClerkConfigured ? (
                 <>
                   <SignedIn>
-                    <a href="/dashboard" className="text-sm text-gray-300 hover:text-white transition">Dashboard</a>
+                    <a href="/dashboard" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Dashboard</a>
                     <UserButton
                       appearance={{
                         elements: {
@@ -314,12 +356,12 @@ export default function Home() {
                   </SignedIn>
                   <SignedOut>
                     <SignInButton mode="modal">
-                      <button className="text-sm text-gray-300 hover:text-white transition">
+                      <button className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">
                         Sign In
                       </button>
                     </SignInButton>
                     <SignUpButton mode="modal">
-                      <button className="px-4 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
+                      <button className="px-5 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
                         Get Started
                       </button>
                     </SignUpButton>
@@ -327,8 +369,8 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <a href="/sign-in" className="text-sm text-gray-300 hover:text-white transition">Sign In</a>
-                  <a href="/sign-up" className="px-4 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
+                  <a href="/sign-in" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Sign In</a>
+                  <a href="/sign-up" className="px-5 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
                     Get Started
                   </a>
                 </>
@@ -338,57 +380,122 @@ export default function Home() {
             {/* Mobile Menu Button */}
             <button
               onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
-              className="md:hidden p-2 text-gray-400 hover:text-white"
+              className="md:hidden p-2.5 text-gray-400 hover:text-white hover:bg-white/5 rounded-lg transition"
+              aria-label="Open menu"
             >
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                {mobileMenuOpen ? (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                ) : (
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
-                )}
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
           </div>
         </div>
+      </nav>
 
-        {/* Mobile Menu */}
-        {mobileMenuOpen && (
-          <div className="md:hidden bg-black border-t border-white/5">
-            <div className="px-4 py-4 space-y-3">
-              <a href="/pricing" className="block text-gray-300 hover:text-white">Pricing</a>
-              <a href="/dashboard" className="block text-gray-300 hover:text-white">Studio</a>
-              <a href="/about" className="block text-gray-300 hover:text-white">About</a>
-              <a href="mailto:support@hdr.it.com" className="block text-gray-300 hover:text-white">Contact</a>
-              <div className="pt-3 border-t border-white/10">
+      {/* Mobile Bottom Sheet Menu */}
+      {mobileMenuOpen && (
+        <>
+          {/* Backdrop */}
+          <div
+            className="md:hidden fixed inset-0 bg-black/60 backdrop-blur-sm z-50"
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          {/* Bottom Sheet */}
+          <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 rounded-t-3xl border-t border-white/10 animate-slide-up">
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-2">
+              <div className="w-10 h-1 rounded-full bg-white/20" />
+            </div>
+
+            {/* Close Button */}
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition"
+              aria-label="Close menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
+            {/* Menu Content */}
+            <div className="px-6 pb-8 pt-2">
+              {/* Nav Links */}
+              <div className="grid grid-cols-2 gap-3 mb-6">
+                <a href="/pricing" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
+                  <div className="w-10 h-10 rounded-xl bg-blue-500/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-white font-medium">Pricing</span>
+                </a>
+                <a href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
+                  <div className="w-10 h-10 rounded-xl bg-purple-500/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <span className="text-white font-medium">Studio</span>
+                </a>
+                <a href="/about" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
+                  <div className="w-10 h-10 rounded-xl bg-green-500/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <span className="text-white font-medium">About</span>
+                </a>
+                <a href="mailto:support@hdr.it.com" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
+                  <div className="w-10 h-10 rounded-xl bg-orange-500/20 flex items-center justify-center">
+                    <svg className="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                    </svg>
+                  </div>
+                  <span className="text-white font-medium">Contact</span>
+                </a>
+              </div>
+
+              {/* Auth Section */}
+              <div className="space-y-3">
                 {isClerkConfigured ? (
                   <>
                     <SignedOut>
-                      <SignInButton mode="modal">
-                        <button className="block w-full text-left text-gray-300 hover:text-white mb-2">Sign In</button>
-                      </SignInButton>
                       <SignUpButton mode="modal">
-                        <button className="block w-full px-4 py-2 text-sm font-medium text-black bg-white rounded-lg">
-                          Get Started
+                        <button onClick={() => setMobileMenuOpen(false)} className="w-full py-4 text-base font-semibold text-black bg-white hover:bg-gray-100 rounded-2xl transition">
+                          Get Started Free
                         </button>
                       </SignUpButton>
+                      <SignInButton mode="modal">
+                        <button onClick={() => setMobileMenuOpen(false)} className="w-full py-4 text-base font-medium text-white bg-white/10 hover:bg-white/15 rounded-2xl transition">
+                          Sign In
+                        </button>
+                      </SignInButton>
                     </SignedOut>
                     <SignedIn>
-                      <a href="/dashboard" className="block text-gray-300 hover:text-white mb-2">Dashboard</a>
+                      <a href="/dashboard" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-semibold text-center text-black bg-white hover:bg-gray-100 rounded-2xl transition">
+                        Go to Dashboard
+                      </a>
                     </SignedIn>
                   </>
                 ) : (
                   <>
-                    <a href="/sign-in" className="block text-gray-300 hover:text-white mb-2">Sign In</a>
-                    <a href="/sign-up" className="block w-full px-4 py-2 text-sm font-medium text-center text-black bg-white rounded-lg">
-                      Get Started
+                    <a href="/sign-up" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-semibold text-center text-black bg-white hover:bg-gray-100 rounded-2xl transition">
+                      Get Started Free
+                    </a>
+                    <a href="/sign-in" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-medium text-center text-white bg-white/10 hover:bg-white/15 rounded-2xl transition">
+                      Sign In
                     </a>
                   </>
                 )}
               </div>
             </div>
+
+            {/* Safe Area Padding for iPhone */}
+            <div className="h-safe-area-inset-bottom" />
           </div>
-        )}
-      </nav>
+        </>
+      )}
 
       {/* Hero Section - AutoHDR Style */}
       <section className="pt-32 pb-16 px-4">
@@ -433,7 +540,7 @@ export default function Home() {
                     : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                 }`}
               >
-                <div className="text-2xl mb-2">{service.icon}</div>
+                <div className="mb-2 text-current">{service.icon}</div>
                 <div className="text-sm font-medium">{service.name}</div>
               </button>
             ))}
@@ -670,88 +777,159 @@ export default function Home() {
             See the Difference
           </h2>
           <p className="text-gray-400 text-center mb-12 max-w-2xl mx-auto">
-            From single photo edits to batch processing hundreds of images
+            Transform amateur photos into magazine-quality real estate imagery
           </p>
 
-          {/* Single Photo Example */}
+          {/* HDR Before/After - Dramatic Comparison */}
           <div className="mb-16">
-            <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-              <span className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm">1</span>
-              Single Photo Edit
-            </h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              {/* Before/After HDR */}
-              <div className="rounded-2xl overflow-hidden border border-white/10">
-                <div className="relative aspect-[4/3] bg-zinc-900">
-                  {/* Replace with actual before image */}
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-blue-500/20 text-blue-400 flex items-center justify-center text-sm">1</span>
+                HDR Bracket Merge
+              </h3>
+              <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">Interior Living Room</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-1 rounded-2xl overflow-hidden">
+              {/* BEFORE - Unedited with problems */}
+              <div className="relative group">
+                <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
                   <img
                     src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80"
                     alt="Before HDR"
-                    className="w-full h-full object-cover brightness-75 contrast-125"
+                    className="w-full h-full object-cover"
+                    style={{
+                      filter: 'brightness(0.6) contrast(1.3) saturate(0.7)',
+                    }}
                   />
-                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/50 text-white text-xs font-medium">
-                    Before
+                  {/* Simulated blown windows */}
+                  <div className="absolute top-[15%] right-[10%] w-[25%] h-[35%] bg-white/90 blur-sm" />
+                  <div className="absolute top-[20%] right-[40%] w-[15%] h-[25%] bg-white/80 blur-sm" />
+                  {/* Problem indicators */}
+                  <div className="absolute top-4 left-4 flex flex-col gap-2">
+                    <span className="px-2.5 py-1 rounded-md bg-red-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Unedited</span>
+                  </div>
+                  {/* Problem callouts */}
+                  <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
+                    <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                      Blown windows
+                    </span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                      Dark shadows
+                    </span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
+                      Dull colors
+                    </span>
                   </div>
                 </div>
-                <div className="p-4 bg-zinc-900/50">
-                  <p className="text-sm text-gray-400">Original RAW bracket - dark windows, blown highlights</p>
-                </div>
               </div>
-              <div className="rounded-2xl overflow-hidden border border-white/10">
-                <div className="relative aspect-[4/3] bg-zinc-900">
-                  {/* Replace with actual after image */}
+              {/* AFTER - Professionally edited */}
+              <div className="relative group">
+                <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
                   <img
                     src="https://images.unsplash.com/photo-1600596542815-ffad4c1539a9?w=800&q=80"
                     alt="After HDR"
                     className="w-full h-full object-cover"
+                    style={{
+                      filter: 'brightness(1.05) contrast(1.05) saturate(1.15)',
+                    }}
                   />
-                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-green-500/80 text-white text-xs font-medium">
-                    After
+                  {/* Success indicator */}
+                  <div className="absolute top-4 left-4">
+                    <span className="px-2.5 py-1 rounded-md bg-green-500 text-white text-[10px] font-bold uppercase tracking-wide flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      HDRit Edited
+                    </span>
                   </div>
-                </div>
-                <div className="p-4 bg-zinc-900/50">
-                  <p className="text-sm text-gray-400">HDR merged - balanced exposure, natural colors</p>
+                  {/* Improvements */}
+                  <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
+                    <span className="px-2 py-1 rounded bg-black/70 text-green-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      Window detail recovered
+                    </span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-green-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      Balanced exposure
+                    </span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-green-400 text-[10px] flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      Vibrant colors
+                    </span>
+                  </div>
                 </div>
               </div>
             </div>
+            {/* Arrow indicator between images */}
+            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-white shadow-xl items-center justify-center">
+              <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
+            </div>
           </div>
 
-          {/* Day to Dusk Example */}
+          {/* Day to Dusk - Dramatic Transformation */}
           <div className="mb-16">
-            <h3 className="text-lg font-semibold text-white mb-6 flex items-center gap-2">
-              <span className="w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm">2</span>
-              Day to Dusk Transformation
-            </h3>
-            <div className="grid md:grid-cols-2 gap-6">
-              <div className="rounded-2xl overflow-hidden border border-white/10">
-                <div className="relative aspect-[4/3] bg-zinc-900">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-lg font-semibold text-white flex items-center gap-2">
+                <span className="w-8 h-8 rounded-full bg-orange-500/20 text-orange-400 flex items-center justify-center text-sm">2</span>
+                Day to Dusk Conversion
+              </h3>
+              <span className="text-xs text-gray-500 bg-white/5 px-3 py-1 rounded-full">Exterior Front</span>
+            </div>
+            <div className="grid md:grid-cols-2 gap-1 rounded-2xl overflow-hidden">
+              {/* BEFORE - Harsh daylight */}
+              <div className="relative">
+                <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
                   <img
                     src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80"
                     alt="Day exterior"
                     className="w-full h-full object-cover"
+                    style={{
+                      filter: 'brightness(1.1) contrast(1.2) saturate(0.8)',
+                    }}
                   />
-                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-black/50 text-white text-xs font-medium">
-                    Day
+                  {/* Harsh sky simulation */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-gray-300/30 to-transparent" />
+                  <div className="absolute top-4 left-4">
+                    <span className="px-2.5 py-1 rounded-md bg-gray-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Midday</span>
+                  </div>
+                  <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
+                    <span className="px-2 py-1 rounded bg-black/70 text-yellow-400 text-[10px]">Harsh shadows</span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-yellow-400 text-[10px]">Overcast sky</span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-yellow-400 text-[10px]">Flat lighting</span>
                   </div>
                 </div>
-                <div className="p-4 bg-zinc-900/50">
-                  <p className="text-sm text-gray-400">Midday exterior - harsh shadows, bland sky</p>
-                </div>
               </div>
-              <div className="rounded-2xl overflow-hidden border border-white/10">
-                <div className="relative aspect-[4/3] bg-zinc-900">
+              {/* AFTER - Stunning twilight */}
+              <div className="relative">
+                <div className="aspect-[4/3] bg-zinc-900 relative overflow-hidden">
                   <img
                     src="https://images.unsplash.com/photo-1600585154340-be6161a56a0c?w=800&q=80"
                     alt="Dusk exterior"
                     className="w-full h-full object-cover"
-                    style={{ filter: 'sepia(0.3) saturate(1.5) hue-rotate(-20deg)' }}
+                    style={{
+                      filter: 'brightness(0.85) contrast(1.1) saturate(1.4)',
+                    }}
                   />
-                  <div className="absolute top-4 left-4 px-3 py-1 rounded-full bg-orange-500/80 text-white text-xs font-medium">
-                    Dusk
+                  {/* Twilight sky gradient */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-indigo-900/40 via-purple-900/20 to-orange-500/10" />
+                  {/* Warm window glow simulation */}
+                  <div className="absolute top-[20%] left-[15%] w-[12%] h-[20%] bg-amber-400/40 blur-md rounded" />
+                  <div className="absolute top-[25%] left-[35%] w-[10%] h-[15%] bg-amber-400/30 blur-md rounded" />
+                  <div className="absolute top-[22%] right-[20%] w-[14%] h-[18%] bg-amber-400/35 blur-md rounded" />
+                  <div className="absolute top-4 left-4">
+                    <span className="px-2.5 py-1 rounded-md bg-gradient-to-r from-orange-500 to-purple-600 text-white text-[10px] font-bold uppercase tracking-wide flex items-center gap-1">
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      Twilight
+                    </span>
                   </div>
-                </div>
-                <div className="p-4 bg-zinc-900/50">
-                  <p className="text-sm text-gray-400">Twilight conversion - warm glow, dramatic sky</p>
+                  <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
+                    <span className="px-2 py-1 rounded bg-black/70 text-orange-400 text-[10px]">Dramatic sky</span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-orange-400 text-[10px]">Warm interior glow</span>
+                    <span className="px-2 py-1 rounded bg-black/70 text-orange-400 text-[10px]">Professional appeal</span>
+                  </div>
                 </div>
               </div>
             </div>
@@ -828,36 +1006,36 @@ export default function Home() {
               {
                 title: 'HDR Editing',
                 desc: 'Blend multiple exposures into perfectly balanced images with natural lighting and detail in every corner.',
-                icon: '🏠'
+                icon: Icons.hdr
               },
               {
                 title: 'Day to Dusk',
                 desc: 'Transform daytime exteriors into stunning twilight shots with warm interior lights and dramatic skies.',
-                icon: '🌅'
+                icon: Icons.twilight
               },
               {
                 title: 'Virtual Staging',
                 desc: 'Add beautiful virtual furniture to empty rooms. Make vacant properties feel like home.',
-                icon: '🛋️'
+                icon: Icons.staging
               },
               {
                 title: 'Grass Greening',
                 desc: 'Make lawns look lush and healthy. Perfect for listings with dormant or patchy grass.',
-                icon: '🌿'
+                icon: Icons.grass
               },
               {
                 title: 'Item Removal',
                 desc: 'Remove unwanted objects, vehicles, or clutter. Clean up your photos without reshooting.',
-                icon: '✨'
+                icon: Icons.removal
               },
               {
                 title: 'Sky Replacement',
                 desc: 'Replace overcast skies with beautiful blue skies and perfect clouds automatically.',
-                icon: '☁️'
+                icon: Icons.cloud
               },
             ].map((feature) => (
               <div key={feature.title} className="p-6 rounded-2xl bg-white/[0.03] border border-white/10 hover:border-white/20 transition-all">
-                <div className="text-3xl mb-4">{feature.icon}</div>
+                <div className="w-12 h-12 rounded-xl bg-white/5 flex items-center justify-center text-gray-400 mb-4">{feature.icon}</div>
                 <h3 className="text-lg font-semibold text-white mb-2">{feature.title}</h3>
                 <p className="text-sm text-gray-400">{feature.desc}</p>
               </div>
