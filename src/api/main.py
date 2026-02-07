@@ -909,7 +909,7 @@ async def process_images(
                 denoise_strength='heavy',
                 sharpen=False,
                 brighten=True,
-                brighten_amount=2.2,  # MORE - target has almost blown white walls
+                brighten_amount=1.5,  # Tuned to match target
             )
             processor = BulletproofProcessor(bp_settings)
 
@@ -953,7 +953,7 @@ async def process_images(
                 denoise_strength='heavy',  # Heavy denoise (preserves detail)
                 sharpen=False,  # AutoHDR is SOFT - no sharpening
                 brighten=True,
-                brighten_amount=2.2,  # MORE - target has almost blown white walls
+                brighten_amount=1.5,  # Tuned to match target
             )
             processor = BulletproofProcessor(bp_settings)
             # Wrap with TurboProcessor for 4x speed boost
