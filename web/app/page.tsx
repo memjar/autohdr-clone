@@ -897,12 +897,11 @@ export default function Home() {
                     alt="Before HDR"
                     className="w-full h-full object-cover"
                     style={{
-                      filter: 'brightness(0.6) contrast(1.3) saturate(0.7)',
+                      filter: 'brightness(0.7) contrast(1.1) saturate(0.75)',
                     }}
                   />
-                  {/* Simulated blown windows */}
-                  <div className="absolute top-[15%] right-[10%] w-[25%] h-[35%] bg-white/90 blur-sm" />
-                  <div className="absolute top-[20%] right-[40%] w-[15%] h-[25%] bg-white/80 blur-sm" />
+                  {/* Dark underexposed look - no fake white boxes */}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/30 via-transparent to-black/10" />
                   {/* Problem indicators */}
                   <div className="absolute top-4 left-4 flex flex-col gap-2">
                     <span className="px-2.5 py-1 rounded-md bg-red-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Unedited</span>
@@ -986,11 +985,11 @@ export default function Home() {
                     alt="Day exterior"
                     className="w-full h-full object-cover"
                     style={{
-                      filter: 'brightness(1.1) contrast(1.2) saturate(0.8)',
+                      filter: 'brightness(1.0) contrast(1.0) saturate(0.85)',
                     }}
                   />
-                  {/* Harsh sky simulation */}
-                  <div className="absolute inset-0 bg-gradient-to-b from-gray-300/30 to-transparent" />
+                  {/* Subtle harsh light simulation - no white clipping */}
+                  <div className="absolute inset-0 bg-gradient-to-b from-gray-400/15 to-transparent" />
                   <div className="absolute top-4 left-4">
                     <span className="px-2.5 py-1 rounded-md bg-gray-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Midday</span>
                   </div>
