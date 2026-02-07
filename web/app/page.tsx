@@ -5,8 +5,8 @@ import { useState, useCallback, useRef, useEffect } from 'react'
 // Version for cache-busting verification
 const APP_VERSION = 'v2.4.0'
 
-// Backend URL from environment variable or default to Cloudflare tunnel
-const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://aberdeen-relates-uncertainty-citizen.trycloudflare.com'
+// Backend URL from environment variable or default to ngrok tunnel
+const DEFAULT_BACKEND_URL = process.env.NEXT_PUBLIC_BACKEND_URL || 'https://nonopinionative-nonratably-mozelle.ngrok-free.dev'
 
 // RAW file extensions (browsers can't display these)
 const RAW_EXTENSIONS = [
