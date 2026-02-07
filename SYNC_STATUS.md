@@ -15,7 +15,7 @@
 - [x] Perspective correction
 - [x] Noise reduction
 - [x] Sharpening
-- [x] Cloudflare tunnel running
+- [x] ngrok tunnel running (custom domain)
 
 ---
 
@@ -39,6 +39,7 @@
 |---------|-----|--------|
 | Frontend (Vercel) | https://hdr.it.com | ✅ Live |
 | Backend (ngrok) | https://hdr.it.com.ngrok.pro | ✅ Permanent |
+| Local | http://192.168.1.147:8000 | ✅ LAN access |
 
 ---
 
