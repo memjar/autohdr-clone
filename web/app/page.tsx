@@ -559,14 +559,14 @@ export default function Home() {
         </>
       )}
 
-      {/* Hero Section - Compact */}
-      <section className="pt-20 pb-6 px-4">
+      {/* Hero Section - Compact & Mobile Optimized */}
+      <section className="pt-16 sm:pt-20 pb-4 sm:pb-6 px-4">
         <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
+          <h1 className="text-2xl sm:text-4xl lg:text-5xl font-bold text-white mb-2 sm:mb-4 leading-tight">
             AI Photo Editing for
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500"> Real Estate</span>
           </h1>
-          <p className="text-lg text-gray-400 mb-6 max-w-2xl mx-auto">
+          <p className="text-sm sm:text-lg text-gray-400 mb-4 sm:mb-6 max-w-2xl mx-auto">
             Professional results in minutes, powered by AI.
           </p>
 
@@ -584,30 +584,30 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Services Grid - Compact */}
-      <section className="py-4 px-4">
+      {/* Services Grid - Compact & Mobile Optimized */}
+      <section className="py-3 sm:py-4 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
             {services.map((service) => (
               <button
                 key={service.id}
                 onClick={() => setMode(service.id as typeof mode)}
-                className={`p-3 rounded-lg text-center transition-all ${
+                className={`p-2 sm:p-3 rounded-lg text-center transition-all ${
                   mode === service.id
                     ? 'bg-white text-black'
                     : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                 }`}
               >
-                <div className="mb-1 text-current flex justify-center">{service.icon}</div>
-                <div className="text-xs font-medium">{service.name}</div>
+                <div className="mb-0.5 sm:mb-1 text-current flex justify-center [&>svg]:w-5 [&>svg]:h-5 sm:[&>svg]:w-6 sm:[&>svg]:h-6">{service.icon}</div>
+                <div className="text-[10px] sm:text-xs font-medium leading-tight">{service.name}</div>
               </button>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Upload Section - Modern Compact */}
-      <section className="py-4 px-4">
+      {/* Upload Section - Mobile Optimized */}
+      <section className="py-3 sm:py-4 px-4">
         <div className="max-w-3xl mx-auto">
           {/* Upload Box - Hidden when files selected */}
           {files.length === 0 && (
@@ -616,7 +616,7 @@ export default function Home() {
               onDragOver={(e) => e.preventDefault()}
               className="relative"
             >
-              <div className="border-2 border-dashed border-white/20 hover:border-white/40 rounded-2xl p-8 text-center transition-all bg-white/[0.02] hover:bg-white/[0.05]">
+              <div className="border-2 border-dashed border-white/20 hover:border-white/40 rounded-xl sm:rounded-2xl p-6 sm:p-8 text-center transition-all bg-white/[0.02] hover:bg-white/[0.05]">
                 <input
                   type="file"
                   multiple
@@ -626,21 +626,21 @@ export default function Home() {
                   id="file-input"
                 />
                 <label htmlFor="file-input" className="cursor-pointer block">
-                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <div className="w-12 h-12 sm:w-16 sm:h-16 mx-auto mb-3 sm:mb-4 rounded-full bg-white/10 flex items-center justify-center">
+                    <svg className="w-6 h-6 sm:w-8 sm:h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
                     </svg>
                   </div>
-                  <p className="text-lg font-semibold text-white mb-1">
+                  <p className="text-base sm:text-lg font-semibold text-white mb-1">
                     Upload your photos
                   </p>
-                  <p className="text-gray-500 text-sm mb-4">
-                    Drag & drop or click to browse
+                  <p className="text-gray-500 text-xs sm:text-sm mb-3 sm:mb-4">
+                    Drag & drop or tap to browse
                   </p>
-                  <button className="px-6 py-2.5 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition text-sm">
+                  <button className="px-5 py-2 sm:px-6 sm:py-2.5 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition text-sm">
                     Select Files
                   </button>
-                  <p className="text-xs text-gray-600 mt-3">
+                  <p className="text-[10px] sm:text-xs text-gray-600 mt-2 sm:mt-3">
                     JPG, PNG, RAW, TIFF, HEIC
                   </p>
                 </label>
@@ -648,14 +648,14 @@ export default function Home() {
             </div>
           )}
 
-          {/* Files Selected - Now the main UI when files exist */}
+          {/* Files Selected - Mobile Optimized */}
           {files.length > 0 && (
-            <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-4">
-              <div className="flex items-center justify-between mb-3">
-                <span className="text-white font-medium text-sm">{files.length} file{files.length > 1 ? 's' : ''} selected</span>
-                <div className="flex items-center gap-3">
-                  <label htmlFor="file-input-add" className="text-sm text-blue-400 hover:text-blue-300 cursor-pointer">
-                    + Add more
+            <div className="bg-white/[0.02] border border-white/10 rounded-xl sm:rounded-2xl p-3 sm:p-4">
+              <div className="flex items-center justify-between mb-2 sm:mb-3">
+                <span className="text-white font-medium text-xs sm:text-sm">{files.length} file{files.length > 1 ? 's' : ''}</span>
+                <div className="flex items-center gap-2 sm:gap-3">
+                  <label htmlFor="file-input-add" className="text-xs sm:text-sm text-blue-400 hover:text-blue-300 cursor-pointer">
+                    + Add
                   </label>
                   <input
                     type="file"
@@ -665,12 +665,12 @@ export default function Home() {
                     className="hidden"
                     id="file-input-add"
                   />
-                  <button onClick={() => setFiles([])} className="text-sm text-red-400 hover:text-red-300">Clear</button>
+                  <button onClick={() => setFiles([])} className="text-xs sm:text-sm text-red-400 hover:text-red-300">Clear</button>
                 </div>
               </div>
 
-              {/* Thumbnail Grid - Compact */}
-              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 mb-4">
+              {/* Thumbnail Grid - Mobile: 3 cols, Tablet: 6, Desktop: 8 */}
+              <div className="grid grid-cols-3 sm:grid-cols-6 lg:grid-cols-8 gap-1.5 sm:gap-2 mb-3 sm:mb-4">
                 {files.slice(0, 16).map((file, i) => (
                   <div key={i} className="group relative">
                     <div className="aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/10 group-hover:border-white/30 transition-all">
@@ -710,9 +710,9 @@ export default function Home() {
                 )}
               </div>
 
-              {/* Adjustments Panel - Compact */}
-              <div className="p-3 rounded-xl bg-white/5 border border-white/10 mb-4">
-                <div className="grid grid-cols-4 gap-3">
+              {/* Adjustments Panel - Mobile: 2 cols, Desktop: 4 cols */}
+              <div className="p-2.5 sm:p-3 rounded-lg sm:rounded-xl bg-white/5 border border-white/10 mb-3 sm:mb-4">
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 sm:gap-3">
                   {[
                     { label: 'Brightness', value: brightness, setter: setBrightness },
                     { label: 'Contrast', value: contrast, setter: setContrast },
@@ -720,7 +720,7 @@ export default function Home() {
                     { label: 'Temp', value: whiteBalance, setter: setWhiteBalance },
                   ].map(({ label, value, setter }) => (
                     <div key={label}>
-                      <div className="flex justify-between text-[10px] text-gray-400 mb-1">
+                      <div className="flex justify-between text-[9px] sm:text-[10px] text-gray-400 mb-0.5 sm:mb-1">
                         <span>{label}</span>
                         <span>{value > 0 ? '+' : ''}{value.toFixed(1)}</span>
                       </div>
@@ -762,11 +762,11 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Progress - Compact */}
+              {/* Progress - Mobile Optimized */}
               {processing && (
-                <div className="mb-4">
-                  <div className="flex justify-between text-xs mb-1.5">
-                    <span className="text-white flex items-center gap-1.5">
+                <div className="mb-3 sm:mb-4">
+                  <div className="flex justify-between text-[10px] sm:text-xs mb-1">
+                    <span className="text-white flex items-center gap-1">
                       {isUploading ? (
                         <svg className="w-3 h-3 animate-pulse text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
@@ -777,11 +777,11 @@ export default function Home() {
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
                       )}
-                      {progressStatus}
+                      <span className="truncate max-w-[180px] sm:max-w-none">{progressStatus}</span>
                     </span>
                     <span className="text-gray-400">{progress}%</span>
                   </div>
-                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-1.5 sm:h-2 bg-white/10 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         isUploading ? 'bg-blue-500' : 'bg-green-500'
@@ -792,11 +792,11 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Process Button */}
+              {/* Process Button - Mobile Optimized */}
               <button
                 onClick={processImages}
                 disabled={processing || files.length === 0}
-                className={`w-full py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm ${
+                className={`w-full py-2.5 sm:py-3 rounded-lg sm:rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-xs sm:text-sm ${
                   processing
                     ? isUploading
                       ? 'bg-blue-500 text-white cursor-wait'
