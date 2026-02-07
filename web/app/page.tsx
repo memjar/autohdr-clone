@@ -158,13 +158,7 @@ export default function Home() {
   const processImages = async () => {
     if (files.length === 0) return
 
-    if (!useLocalBackend) {
-      const rawFiles = files.filter(f => isRawFile(f.name))
-      if (rawFiles.length > 0) {
-        setError(`RAW files require the Pro Engine. Please use JPG/PNG for cloud processing.`)
-        return
-      }
-    }
+    // RAW files are now processed via Vercel proxy to Pro Engine
 
     setProcessing(true)
     setResult(null)
@@ -228,7 +222,8 @@ export default function Home() {
         params.set('sharpening', sharpening.toString())
       }
 
-      const apiUrl = useLocalBackend ? `${backendUrl}/process?${params}` : `/api/process?${params}`
+      // Always use Vercel proxy for reliability (handles CORS, timeouts server-side)
+      const apiUrl = `/api/process?${params}`
       const controller = new AbortController()
       const timeoutId = setTimeout(() => controller.abort(), 300000) // 5 min for large RAW files
 
