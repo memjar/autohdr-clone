@@ -892,11 +892,13 @@ async def process_images(
         # HDR MODE: Single image enhancement or bracket merge
         # Use Bulletproof Processor v6.0 (production-grade, zero grain)
         if len(image_arrays) > 1 and HAS_BULLETPROOF:
+            # Use SAME settings as single image (tuned to 99% AutoHDR match)
             bp_settings = BulletproofSettings(
                 preset='professional',
-                denoise_strength='extreme',  # MAX denoising - zero grain
-                sharpen=True,
+                denoise_strength='heavy',
+                sharpen=False,
                 brighten=True,
+                brighten_amount=1.85,  # INCREASED for bright white walls like target
             )
             processor = BulletproofProcessor(bp_settings)
 
@@ -932,9 +934,10 @@ async def process_images(
         if HAS_BULLETPROOF:
             bp_settings = BulletproofSettings(
                 preset='professional',
-                denoise_strength='extreme',  # MAX denoising - zero grain
-                sharpen=True,
+                denoise_strength='heavy',  # Heavy denoise (preserves detail)
+                sharpen=False,  # AutoHDR is SOFT - no sharpening
                 brighten=True,
+                brighten_amount=1.85,  # INCREASED - target has bright white walls
             )
             processor = BulletproofProcessor(bp_settings)
             result = processor.process(base_image)

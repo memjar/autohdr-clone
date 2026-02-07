@@ -464,28 +464,24 @@ export default function Home() {
 
           {/* Bottom Sheet */}
           <div className="md:hidden fixed bottom-0 left-0 right-0 z-50 bg-zinc-900 rounded-t-3xl border-t border-white/10 animate-slide-up">
-            {/* Header with Handle and Close */}
-            <div className="flex items-center justify-between px-6 pt-3 pb-4">
-              {/* Spacer for centering */}
-              <div className="w-10" />
-
-              {/* Handle */}
+            {/* Handle */}
+            <div className="flex justify-center pt-3 pb-2">
               <div className="w-10 h-1 rounded-full bg-white/20" />
-
-              {/* Close Button */}
-              <button
-                onClick={() => setMobileMenuOpen(false)}
-                className="w-10 h-10 flex items-center justify-center text-gray-400 hover:text-white hover:bg-white/10 rounded-full transition"
-                aria-label="Close menu"
-              >
-                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-                </svg>
-              </button>
             </div>
 
+            {/* Close Button */}
+            <button
+              onClick={() => setMobileMenuOpen(false)}
+              className="absolute top-4 right-4 p-2 text-gray-400 hover:text-white hover:bg-white/5 rounded-full transition"
+              aria-label="Close menu"
+            >
+              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              </svg>
+            </button>
+
             {/* Menu Content */}
-            <div className="px-6 pb-8">
+            <div className="px-6 pb-8 pt-2">
               {/* Nav Links */}
               <div className="grid grid-cols-2 gap-3 mb-6">
                 <a href="/pricing" onClick={() => setMobileMenuOpen(false)} className="flex items-center gap-3 p-4 bg-white/5 hover:bg-white/10 rounded-2xl transition">
@@ -563,28 +559,24 @@ export default function Home() {
         </>
       )}
 
-      {/* Hero Section - AutoHDR Style */}
-      <section className="pt-32 pb-16 px-4">
+      {/* Hero Section - Compact */}
+      <section className="pt-20 pb-6 px-4">
         <div className="max-w-4xl mx-auto text-center">
-          <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-6 leading-tight">
+          <h1 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white mb-4 leading-tight">
             AI Photo Editing for
-            <br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500">
-              Real Estate Photographers
-            </span>
+            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-purple-500"> Real Estate</span>
           </h1>
-          <p className="text-xl text-gray-400 mb-12 max-w-2xl mx-auto">
-            Edit your photoshoot in minutes at half the cost of an editor.
-            Professional results, powered by AI.
+          <p className="text-lg text-gray-400 mb-6 max-w-2xl mx-auto">
+            Professional results in minutes, powered by AI.
           </p>
 
           {/* Status Indicator */}
-          <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/5 border border-white/10 mb-8">
+          <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-full bg-white/5 border border-white/10">
             <div className={`w-2 h-2 rounded-full ${
               proProcessorStatus === 'connected' ? 'bg-green-500' :
               proProcessorStatus === 'checking' ? 'bg-yellow-500 animate-pulse' : 'bg-gray-500'
             }`} />
-            <span className="text-sm text-gray-400">
+            <span className="text-xs text-gray-400">
               {proProcessorStatus === 'connected' ? 'Pro Engine Ready' :
                proProcessorStatus === 'checking' ? 'Connecting...' : 'Cloud Processing'}
             </span>
@@ -592,83 +584,99 @@ export default function Home() {
         </div>
       </section>
 
-      {/* Services Grid - AutoHDR Style */}
-      <section className="py-8 px-4">
+      {/* Services Grid - Compact */}
+      <section className="py-4 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+          <div className="grid grid-cols-3 sm:grid-cols-6 gap-2">
             {services.map((service) => (
               <button
                 key={service.id}
                 onClick={() => setMode(service.id as typeof mode)}
-                className={`p-4 rounded-xl transition-all flex flex-col items-center justify-center ${
+                className={`p-3 rounded-lg text-center transition-all ${
                   mode === service.id
                     ? 'bg-white text-black'
                     : 'bg-white/5 text-white hover:bg-white/10 border border-white/10'
                 }`}
               >
-                <div className="mb-2">{service.icon}</div>
-                <div className="text-sm font-medium text-center">{service.name}</div>
+                <div className="mb-1 text-current flex justify-center">{service.icon}</div>
+                <div className="text-xs font-medium">{service.name}</div>
               </button>
             ))}
           </div>
         </div>
       </section>
 
-      {/* Upload Section - AutoHDR Style */}
-      <section className="py-8 px-4">
+      {/* Upload Section - Modern Compact */}
+      <section className="py-4 px-4">
         <div className="max-w-3xl mx-auto">
-          <div
-            onDrop={handleDrop}
-            onDragOver={(e) => e.preventDefault()}
-            className="relative"
-          >
-            <div className="border-2 border-dashed border-white/20 hover:border-white/40 rounded-2xl p-12 text-center transition-all bg-white/[0.02] hover:bg-white/[0.05]">
-              <input
-                type="file"
-                multiple
-                accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
-                onChange={handleFileSelect}
-                className="hidden"
-                id="file-input"
-              />
-              <label htmlFor="file-input" className="cursor-pointer block">
-                <div className="w-20 h-20 mx-auto mb-6 rounded-full bg-white/10 flex items-center justify-center">
-                  <svg className="w-10 h-10 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
-                  </svg>
-                </div>
-                <p className="text-xl font-semibold text-white mb-2">
-                  Upload your photos
-                </p>
-                <p className="text-gray-500 mb-6">
-                  Drag & drop or click to browse
-                </p>
-                <button className="px-8 py-3 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition">
-                  Select Files
-                </button>
-                <p className="text-xs text-gray-600 mt-4">
-                  Supports JPG, PNG, RAW, TIFF, HEIC
-                </p>
-              </label>
+          {/* Upload Box - Hidden when files selected */}
+          {files.length === 0 && (
+            <div
+              onDrop={handleDrop}
+              onDragOver={(e) => e.preventDefault()}
+              className="relative"
+            >
+              <div className="border-2 border-dashed border-white/20 hover:border-white/40 rounded-2xl p-8 text-center transition-all bg-white/[0.02] hover:bg-white/[0.05]">
+                <input
+                  type="file"
+                  multiple
+                  accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                  id="file-input"
+                />
+                <label htmlFor="file-input" className="cursor-pointer block">
+                  <div className="w-16 h-16 mx-auto mb-4 rounded-full bg-white/10 flex items-center justify-center">
+                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                    </svg>
+                  </div>
+                  <p className="text-lg font-semibold text-white mb-1">
+                    Upload your photos
+                  </p>
+                  <p className="text-gray-500 text-sm mb-4">
+                    Drag & drop or click to browse
+                  </p>
+                  <button className="px-6 py-2.5 bg-white text-black font-semibold rounded-lg hover:bg-gray-100 transition text-sm">
+                    Select Files
+                  </button>
+                  <p className="text-xs text-gray-600 mt-3">
+                    JPG, PNG, RAW, TIFF, HEIC
+                  </p>
+                </label>
+              </div>
             </div>
-          </div>
+          )}
 
-          {/* Files Selected */}
+          {/* Files Selected - Now the main UI when files exist */}
           {files.length > 0 && (
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-white font-medium">{files.length} file{files.length > 1 ? 's' : ''} selected</span>
-                <button onClick={() => setFiles([])} className="text-sm text-red-400 hover:text-red-300">Clear all</button>
+            <div className="bg-white/[0.02] border border-white/10 rounded-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-white font-medium text-sm">{files.length} file{files.length > 1 ? 's' : ''} selected</span>
+                <div className="flex items-center gap-3">
+                  <label htmlFor="file-input-add" className="text-sm text-blue-400 hover:text-blue-300 cursor-pointer">
+                    + Add more
+                  </label>
+                  <input
+                    type="file"
+                    multiple
+                    accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
+                    onChange={handleFileSelect}
+                    className="hidden"
+                    id="file-input-add"
+                  />
+                  <button onClick={() => setFiles([])} className="text-sm text-red-400 hover:text-red-300">Clear</button>
+                </div>
               </div>
 
-              {/* Thumbnail Grid */}
-              <div className="grid grid-cols-3 sm:grid-cols-4 lg:grid-cols-6 gap-3 mb-6">
-                {files.slice(0, 12).map((file, i) => (
+              {/* Thumbnail Grid - Compact */}
+              <div className="grid grid-cols-4 sm:grid-cols-6 lg:grid-cols-8 gap-2 mb-4">
+                {files.slice(0, 16).map((file, i) => (
                   <div key={i} className="group relative">
                     <div className="aspect-square rounded-lg overflow-hidden bg-white/5 border border-white/10 group-hover:border-white/30 transition-all">
                       {isRawFile(file.name) ? (
                         <div className="w-full h-full flex flex-col items-center justify-center text-gray-400 bg-gradient-to-br from-white/5 to-transparent">
-                          <span className="text-xs font-medium text-blue-400">{file.name.split('.').pop()?.toUpperCase()}</span>
+                          <span className="text-[10px] font-bold text-blue-400">{file.name.split('.').pop()?.toUpperCase()}</span>
                         </div>
                       ) : previewUrls[i] ? (
                         <img
@@ -679,44 +687,40 @@ export default function Home() {
                         />
                       ) : (
                         <div className="w-full h-full flex items-center justify-center">
-                          <div className="w-5 h-5 border-2 border-white/20 border-t-white rounded-full animate-spin" />
+                          <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin" />
                         </div>
                       )}
                     </div>
-                    <p className="mt-1 text-[10px] text-gray-500 truncate" title={file.name}>
-                      {file.name}
-                    </p>
                     {/* Remove button */}
                     <button
                       onClick={() => setFiles(files.filter((_, idx) => idx !== i))}
-                      className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                      className="absolute -top-1 -right-1 w-4 h-4 bg-red-500 hover:bg-red-400 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
                     >
-                      <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <svg className="w-2.5 h-2.5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
                       </svg>
                     </button>
                   </div>
                 ))}
-                {files.length > 12 && (
+                {files.length > 16 && (
                   <div className="aspect-square rounded-lg bg-white/5 border border-white/10 flex flex-col items-center justify-center text-gray-400">
-                    <span className="text-xl font-bold">+{files.length - 12}</span>
-                    <span className="text-[10px]">more</span>
+                    <span className="text-lg font-bold">+{files.length - 16}</span>
+                    <span className="text-[9px]">more</span>
                   </div>
                 )}
               </div>
 
-              {/* Adjustments Panel */}
-              <div className="p-5 rounded-xl bg-white/5 border border-white/10 mb-6">
-                <h3 className="text-sm font-medium text-white mb-4">Adjustments</h3>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+              {/* Adjustments Panel - Compact */}
+              <div className="p-3 rounded-xl bg-white/5 border border-white/10 mb-4">
+                <div className="grid grid-cols-4 gap-3">
                   {[
                     { label: 'Brightness', value: brightness, setter: setBrightness },
                     { label: 'Contrast', value: contrast, setter: setContrast },
                     { label: 'Vibrance', value: vibrance, setter: setVibrance },
-                    { label: 'Temperature', value: whiteBalance, setter: setWhiteBalance },
+                    { label: 'Temp', value: whiteBalance, setter: setWhiteBalance },
                   ].map(({ label, value, setter }) => (
                     <div key={label}>
-                      <div className="flex justify-between text-xs text-gray-400 mb-2">
+                      <div className="flex justify-between text-[10px] text-gray-400 mb-1">
                         <span>{label}</span>
                         <span>{value > 0 ? '+' : ''}{value.toFixed(1)}</span>
                       </div>
@@ -736,7 +740,7 @@ export default function Home() {
 
               {/* Enhance Options */}
               {mode === 'enhance' && (
-                <div className="flex flex-wrap gap-2 mb-6">
+                <div className="flex flex-wrap gap-1.5 mb-4">
                   {[
                     { label: 'Window Pull', value: windowPull, setter: setWindowPull },
                     { label: 'Sky Enhance', value: skyEnhance, setter: setSkyEnhance },
@@ -747,7 +751,7 @@ export default function Home() {
                     <button
                       key={label}
                       onClick={() => setter(!value)}
-                      className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                      className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                         value ? 'bg-white text-black' : 'bg-white/10 text-gray-400 hover:bg-white/20'
                       }`}
                     >
@@ -758,17 +762,17 @@ export default function Home() {
                 </div>
               )}
 
-              {/* Progress */}
+              {/* Progress - Compact */}
               {processing && (
-                <div className="mb-6">
-                  <div className="flex justify-between text-sm mb-2">
-                    <span className="text-white flex items-center gap-2">
+                <div className="mb-4">
+                  <div className="flex justify-between text-xs mb-1.5">
+                    <span className="text-white flex items-center gap-1.5">
                       {isUploading ? (
-                        <svg className="w-4 h-4 animate-pulse text-blue-400" fill="currentColor" viewBox="0 0 20 20">
+                        <svg className="w-3 h-3 animate-pulse text-blue-400" fill="currentColor" viewBox="0 0 20 20">
                           <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                         </svg>
                       ) : (
-                        <svg className="w-4 h-4 animate-spin text-green-400" fill="none" viewBox="0 0 24 24">
+                        <svg className="w-3 h-3 animate-spin text-green-400" fill="none" viewBox="0 0 24 24">
                           <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                           <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                         </svg>
@@ -777,7 +781,7 @@ export default function Home() {
                     </span>
                     <span className="text-gray-400">{progress}%</span>
                   </div>
-                  <div className="h-3 bg-white/10 rounded-full overflow-hidden">
+                  <div className="h-2 bg-white/10 rounded-full overflow-hidden">
                     <div
                       className={`h-full rounded-full transition-all duration-300 ${
                         isUploading ? 'bg-blue-500' : 'bg-green-500'
@@ -785,9 +789,6 @@ export default function Home() {
                       style={{ width: `${progress}%` }}
                     />
                   </div>
-                  <p className="text-xs text-gray-500 mt-2">
-                    {isUploading ? 'Please wait while your files upload...' : 'Processing with Bulletproof v6.0.8...'}
-                  </p>
                 </div>
               )}
 
@@ -795,7 +796,7 @@ export default function Home() {
               <button
                 onClick={processImages}
                 disabled={processing || files.length === 0}
-                className={`w-full py-4 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 ${
+                className={`w-full py-3 rounded-xl font-semibold transition-all flex items-center justify-center gap-2 text-sm ${
                   processing
                     ? isUploading
                       ? 'bg-blue-500 text-white cursor-wait'
@@ -806,14 +807,14 @@ export default function Home() {
                 {processing ? (
                   isUploading ? (
                     <>
-                      <svg className="w-5 h-5 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
+                      <svg className="w-4 h-4 animate-bounce" fill="currentColor" viewBox="0 0 20 20">
                         <path fillRule="evenodd" d="M3 17a1 1 0 011-1h12a1 1 0 110 2H4a1 1 0 01-1-1zM6.293 6.707a1 1 0 010-1.414l3-3a1 1 0 011.414 0l3 3a1 1 0 01-1.414 1.414L11 5.414V13a1 1 0 11-2 0V5.414L7.707 6.707a1 1 0 01-1.414 0z" clipRule="evenodd" />
                       </svg>
                       Uploading {uploadProgress}%...
                     </>
                   ) : (
                     <>
-                      <svg className="animate-spin w-5 h-5" viewBox="0 0 24 24">
+                      <svg className="animate-spin w-4 h-4" viewBox="0 0 24 24">
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z" />
                       </svg>
@@ -822,7 +823,7 @@ export default function Home() {
                   )
                 ) : (
                   <>
-                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                       <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
                     </svg>
                     Process {files.length} Photo{files.length > 1 ? 's' : ''}
@@ -834,31 +835,31 @@ export default function Home() {
 
           {/* Error */}
           {error && (
-            <div className="mt-6 p-4 rounded-xl bg-red-500/10 border border-red-500/30">
+            <div className="mt-4 p-3 rounded-xl bg-red-500/10 border border-red-500/30">
               <p className="text-red-400 text-sm">{error}</p>
             </div>
           )}
 
           {/* Result */}
           {resultUrl && (
-            <div className="mt-8">
-              <div className="flex items-center justify-between mb-4">
-                <span className="text-white font-medium flex items-center gap-2">
-                  <svg className="w-5 h-5 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <div className="mt-6">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-white font-medium text-sm flex items-center gap-2">
+                  <svg className="w-4 h-4 text-green-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" />
                   </svg>
-                  Processing Complete
+                  Complete
                 </span>
-                <button onClick={resetAll} className="text-sm text-gray-400 hover:text-white">Start Over</button>
+                <button onClick={resetAll} className="text-sm text-gray-400 hover:text-white">New Edit</button>
               </div>
-              <div className="rounded-2xl overflow-hidden bg-white/5 mb-4">
+              <div className="rounded-xl overflow-hidden bg-white/5 mb-3">
                 <img src={resultUrl} alt="Result" className="w-full" />
               </div>
               <button
                 onClick={downloadResult}
-                className="w-full py-4 rounded-xl font-semibold text-black bg-green-500 hover:bg-green-400 transition-all flex items-center justify-center gap-2"
+                className="w-full py-3 rounded-xl font-semibold text-black bg-green-500 hover:bg-green-400 transition-all flex items-center justify-center gap-2 text-sm"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
                 </svg>
                 Download Result
@@ -896,11 +897,12 @@ export default function Home() {
                     alt="Before HDR"
                     className="w-full h-full object-cover"
                     style={{
-                      filter: 'brightness(0.55) contrast(1.4) saturate(0.6)',
+                      filter: 'brightness(0.6) contrast(1.3) saturate(0.7)',
                     }}
                   />
-                  {/* Dark vignette overlay to simulate underexposure */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/40 via-transparent to-black/20" />
+                  {/* Simulated blown windows */}
+                  <div className="absolute top-[15%] right-[10%] w-[25%] h-[35%] bg-white/90 blur-sm" />
+                  <div className="absolute top-[20%] right-[40%] w-[15%] h-[25%] bg-white/80 blur-sm" />
                   {/* Problem indicators */}
                   <div className="absolute top-4 left-4 flex flex-col gap-2">
                     <span className="px-2.5 py-1 rounded-md bg-red-500/90 text-white text-[10px] font-bold uppercase tracking-wide">Unedited</span>
@@ -909,15 +911,15 @@ export default function Home() {
                   <div className="absolute bottom-4 left-4 right-4 flex flex-wrap gap-2">
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Dark interior
+                      Blown windows
                     </span>
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Lost detail
+                      Dark shadows
                     </span>
                     <span className="px-2 py-1 rounded bg-black/70 text-red-400 text-[10px] flex items-center gap-1">
                       <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" /></svg>
-                      Flat colors
+                      Dull colors
                     </span>
                   </div>
                 </div>
@@ -957,6 +959,12 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+            </div>
+            {/* Arrow indicator between images */}
+            <div className="hidden md:flex absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-10 w-12 h-12 rounded-full bg-white shadow-xl items-center justify-center">
+              <svg className="w-6 h-6 text-black" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M14 5l7 7m0 0l-7 7m7-7H3" />
+              </svg>
             </div>
           </div>
 
