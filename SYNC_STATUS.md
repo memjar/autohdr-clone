@@ -38,7 +38,7 @@
 | Service | URL | Status |
 |---------|-----|--------|
 | Frontend (Vercel) | https://hdr.it.com | ✅ Live |
-| Backend (Cloudflare) | https://aberdeen-relates-uncertainty-citizen.trycloudflare.com | ✅ Running |
+| Backend (ngrok) | https://hdr.it.com.ngrok.pro | ✅ Permanent |
 
 ---
 
