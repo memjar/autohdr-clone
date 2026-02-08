@@ -510,7 +510,7 @@ export default function Home() {
               <input
                 type="file"
                 multiple
-                accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
+                accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf,.heic,.heif"
                 onChange={handleFileSelect}
                 className="hidden"
                 id="nav-file-input"
@@ -731,7 +731,7 @@ export default function Home() {
                 <input
                   type="file"
                   multiple
-                  accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
+                  accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf,.heic,.heif"
                   onChange={handleFileSelect}
                   className="hidden"
                   id="file-input"
@@ -862,7 +862,7 @@ export default function Home() {
                   <input
                     type="file"
                     multiple
-                    accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf"
+                    accept="image/*,.raw,.cr2,.cr3,.nef,.arw,.dng,.orf,.rw2,.pef,.raf,.heic,.heif"
                     onChange={handleFileSelect}
                     className="hidden"
                     id="file-input-add"

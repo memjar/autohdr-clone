@@ -280,6 +280,20 @@ async def read_image_async(file: UploadFile) -> np.ndarray:
         except Exception as e:
             raise HTTPException(400, f"Could not decode RAW file {filename}: {str(e)}")
 
+    # Handle HEIC/HEIF files (iPhone photos)
+    if ext in ['.heic', '.heif']:
+        try:
+            import pillow_heif
+            from PIL import Image
+            pillow_heif.register_heif_opener()
+            heif_image = Image.open(io.BytesIO(contents))
+            rgb = np.array(heif_image.convert('RGB'))
+            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+        except ImportError:
+            raise HTTPException(400, "HEIC support not available. Install pillow-heif.")
+        except Exception as e:
+            raise HTTPException(400, f"Could not decode HEIC file {filename}: {str(e)}")
+
     # Standard image formats
     nparr = np.frombuffer(contents, np.uint8)
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
