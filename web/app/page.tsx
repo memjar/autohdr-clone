@@ -79,7 +79,7 @@ export default function Home() {
   const [resultUrl, setResultUrl] = useState<string | null>(null)
   const [originalUrl, setOriginalUrl] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
-  const [mode, setMode] = useState<'hdr' | 'twilight' | 'enhance' | 'grass' | 'staging' | 'removal'>('hdr')
+  const [mode, setMode] = useState<'single' | 'hdr'>('hdr')
   const [backendUrl] = useState(DEFAULT_BACKEND_URL)
   const [proProcessorStatus, setProProcessorStatus] = useState<'checking' | 'connected' | 'unavailable'>('checking')
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false)
@@ -377,12 +377,8 @@ export default function Home() {
   }
 
   const services = [
-    { id: 'hdr', name: 'HDR Editing', desc: 'Blend multiple exposures perfectly', icon: Icons.hdr },
-    { id: 'enhance', name: 'Flambient Editing', desc: 'Flash + ambient blend', icon: Icons.flambient },
-    { id: 'twilight', name: 'Day to Dusk', desc: 'Transform to twilight', icon: Icons.twilight },
-    { id: 'grass', name: 'Grass Greening', desc: 'Enhance lawn color', icon: Icons.grass },
-    { id: 'removal', name: 'Item Removal', desc: 'Remove unwanted objects', icon: Icons.removal },
-    { id: 'staging', name: 'Virtual Staging', desc: 'Add virtual furniture', icon: Icons.staging },
+    { id: 'single', name: 'Single Photo', desc: 'Enhance a single image', icon: Icons.hdr },
+    { id: 'hdr', name: 'HDR Editing', desc: 'Blend multiple exposures', icon: Icons.flambient },
   ]
 
   return (
@@ -610,7 +606,7 @@ export default function Home() {
       {/* Services Grid - Compact & Mobile Optimized */}
       <section className="py-3 sm:py-4 px-4">
         <div className="max-w-5xl mx-auto">
-          <div className="grid grid-cols-3 sm:grid-cols-6 gap-1.5 sm:gap-2">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 max-w-md mx-auto">
             {services.map((service) => (
               <button
                 key={service.id}
