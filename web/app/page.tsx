@@ -177,6 +177,52 @@ export default function Home() {
     }
   }
 
+  // Process a single file and return the blob
+  const processSingleFile = async (file: File, params: URLSearchParams, index: number, total: number): Promise<Blob> => {
+    const formData = new FormData()
+    formData.append('images', file)
+
+    const apiUrl = `${DEFAULT_BACKEND_URL}/process?${params}`
+    const fileSizeMB = (file.size / 1024 / 1024).toFixed(1)
+
+    return new Promise<Blob>((resolve, reject) => {
+      const xhr = new XMLHttpRequest()
+
+      xhr.upload.addEventListener('progress', (e) => {
+        if (e.lengthComputable) {
+          const uploadPct = (e.loaded / e.total) * 100
+          // Calculate overall progress: (completed files + current upload) / total
+          const overallPct = ((index / total) * 100) + (uploadPct / total * 0.5)
+          setProgress(Math.round(overallPct))
+          const uploadedMB = (e.loaded / 1024 / 1024).toFixed(1)
+          setProgressStatus(`[${index + 1}/${total}] Uploading ${file.name.slice(0, 20)}... ${uploadedMB}/${fileSizeMB}MB`)
+        }
+      })
+
+      xhr.upload.addEventListener('load', () => {
+        const basePct = ((index / total) * 100) + (50 / total)
+        setProgress(Math.round(basePct))
+        setProgressStatus(`[${index + 1}/${total}] Processing ${file.name.slice(0, 20)}...`)
+      })
+
+      xhr.addEventListener('load', () => {
+        if (xhr.status === 200 && xhr.response) {
+          resolve(xhr.response)
+        } else {
+          reject(new Error(`Failed to process ${file.name}: ${xhr.status}`))
+        }
+      })
+
+      xhr.addEventListener('error', () => reject(new Error(`Network error processing ${file.name}`)))
+      xhr.addEventListener('timeout', () => reject(new Error(`Timeout processing ${file.name}`)))
+
+      xhr.responseType = 'blob'
+      xhr.timeout = 300000 // 5 min per file
+      xhr.open('POST', apiUrl)
+      xhr.send(formData)
+    })
+  }
+
   const processImages = async () => {
     if (files.length === 0) return
 
@@ -195,9 +241,6 @@ export default function Home() {
       if (originalFile.type.startsWith('image/') && !isRawFile(originalFile.name)) {
         setOriginalUrl(URL.createObjectURL(originalFile))
       }
-
-      const formData = new FormData()
-      files.forEach(file => formData.append('images', file))
 
       const params = new URLSearchParams({
         mode,
@@ -219,8 +262,53 @@ export default function Home() {
       const totalSize = files.reduce((acc, f) => acc + f.size, 0)
       const totalSizeMB = (totalSize / 1024 / 1024).toFixed(1)
 
+      // Detect HDR bracket sets vs batch of single photos
+      // HDR brackets: 2-5 files in HDR mode (sent together for Mertens fusion)
+      // Batch: 6+ files OR enhance mode = process sequentially
+      const isHdrBrackets = mode === 'hdr' && files.length >= 2 && files.length <= 5
+
+      // BATCH PROCESSING: For single photos (enhance) or many files, process one at a time
+      if (!isHdrBrackets && files.length > 1) {
+        console.log('BATCH MODE: Processing', files.length, 'files sequentially')
+        setProgressStatus(`Batch processing ${files.length} files...`)
+
+        const results: Blob[] = []
+        for (let i = 0; i < files.length; i++) {
+          try {
+            const blob = await processSingleFile(files[i], params, i, files.length)
+            results.push(blob)
+            console.log(`Completed ${i + 1}/${files.length}: ${files[i].name}`)
+
+            // Auto-download each result as it completes
+            const url = URL.createObjectURL(blob)
+            const a = document.createElement('a')
+            a.href = url
+            a.download = `hdrit_${mode}_${i + 1}_${files[i].name.replace(/\.\w+$/, '')}.jpg`
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+            URL.revokeObjectURL(url)
+          } catch (err: any) {
+            console.error(`Failed to process ${files[i].name}:`, err)
+            // Continue with next file, don't stop batch
+          }
+        }
+
+        setProgress(100)
+        setProgressStatus(`Complete! Processed ${results.length}/${files.length} files`)
+        setResult(`Batch complete: ${results.length} files processed`)
+        setProcessing(false)
+        setIsUploading(false)
+        return
+      }
+
+      // SINGLE FILE or HDR BRACKETS: Original behavior - send all together
+      console.log(isHdrBrackets ? 'HDR BRACKETS: Sending all files for Mertens fusion' : 'SINGLE FILE mode')
+
+      const formData = new FormData()
+      files.forEach(file => formData.append('images', file))
+
       // For large files (>4MB), send directly to backend to bypass Vercel's payload limit
-      // Vercel serverless has 4.5MB limit, ARW files are 25-50MB each
       const useDirectBackend = totalSize > 4 * 1024 * 1024
       const apiUrl = useDirectBackend
         ? `${DEFAULT_BACKEND_URL}/process?${params}`
@@ -228,10 +316,13 @@ export default function Home() {
 
       console.log('Upload strategy:', useDirectBackend ? 'DIRECT to backend' : 'via Vercel proxy')
       console.log('API URL:', apiUrl)
-
-      // Use XMLHttpRequest for upload progress
       console.log('Starting upload to:', apiUrl)
       console.log('Total size:', totalSizeMB, 'MB')
+
+      // Warn about large uploads
+      if (isHdrBrackets && totalSize > 50 * 1024 * 1024) {
+        setProgressStatus(`Uploading ${files.length} brackets (${totalSizeMB}MB) - this may take several minutes...`)
+      }
 
       const blob = await new Promise<Blob>((resolve, reject) => {
         const xhr = new XMLHttpRequest()
@@ -305,7 +396,8 @@ export default function Home() {
         })
 
         xhr.responseType = 'blob'
-        xhr.timeout = 300000 // 5 minutes
+        // HDR brackets need longer timeout: 3 ARW files ~100MB = 10+ min upload
+        xhr.timeout = isHdrBrackets ? 900000 : 300000 // 15 min for brackets, 5 min otherwise
         xhr.open('POST', apiUrl)
         xhr.send(formData)
       })
