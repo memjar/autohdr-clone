@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Literal, List, Tuple
 from pathlib import Path
 
-PROCESSOR_VERSION = "7.0.0"  # WOW FACTOR - Elon Musk level quality
+PROCESSOR_VERSION = "7.0.2"  # WOW FACTOR - Balanced contrast fix
 
 
 @dataclass
@@ -346,14 +346,14 @@ class BulletproofProcessor:
         # =====================================================
         l_norm = l / 255.0
 
-        # Aggressive S-curve
+        # Balanced S-curve - punchy but natural
         midpoint = 0.45  # Slightly lower midpoint = brighter overall
-        steepness = 3.5  # Punchy curve
+        steepness = 2.5  # Balanced curve (was 3.5 - too harsh)
         curved = 1 / (1 + np.exp(-steepness * (l_norm - midpoint)))
         curved = (curved - curved.min()) / (curved.max() - curved.min() + 1e-6)
 
-        # Blend 40% S-curve for strong effect
-        l_norm = l_norm * 0.6 + curved * 0.4
+        # Blend 30% S-curve for natural contrast
+        l_norm = l_norm * 0.7 + curved * 0.3
 
         # =====================================================
         # STEP 3: BRIGHTNESS BOOST
@@ -365,7 +365,7 @@ class BulletproofProcessor:
         # STEP 4: CONTRAST POP
         # Punch up the contrast for wow factor
         # =====================================================
-        l_norm = (l_norm - 0.5) * 1.20 + 0.5  # 20% more contrast
+        l_norm = (l_norm - 0.5) * 1.08 + 0.5  # 8% contrast (was 20% - too harsh)
 
         lab[:, :, 0] = np.clip(l_norm * 255, 0, 255).astype(np.uint8)
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
