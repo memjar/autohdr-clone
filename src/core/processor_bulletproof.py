@@ -73,20 +73,22 @@ class BulletproofProcessor:
         """Process single image to AutoHDR quality."""
 
         # =====================================================
-        # STAGE 0: SMART UPSCALE (v6.2.0 - for low-res inputs)
-        # Upscale small images to ensure quality output
+        # STAGE 0: SMART UPSCALE (v7.0.0 - quality guarantee)
+        # Upscale small images to ensure professional output
         # =====================================================
         h, w = image.shape[:2]
-        min_dimension = 2000  # Target minimum for professional output
+        min_dimension = 2500  # Professional minimum (increased from 2000)
         max_side = max(h, w)
 
         if max_side < min_dimension:
             scale = min_dimension / max_side
+            # Cap scale at 3x to avoid excessive upscaling
+            scale = min(scale, 3.0)
             new_w = int(w * scale)
             new_h = int(h * scale)
-            # Use INTER_LANCZOS4 for high-quality upscaling
+            # Use INTER_LANCZOS4 for highest quality upscaling
             image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            print(f"   ↑ Upscaled {w}x{h} → {new_w}x{new_h} (Lanczos)")
+            print(f"   ↑ Quality upscale: {w}x{h} → {new_w}x{new_h} (Lanczos4)")
 
         # =====================================================
         # STAGE 1: INPUT CLEANING (removes grain without over-smoothing)
@@ -114,6 +116,20 @@ class BulletproofProcessor:
         # Target: neutral/cool (+1.5 to +2 warmth), not warm yellow
         # =====================================================
         result = self._apply_cool_wb(result)
+
+        # =====================================================
+        # STAGE 6: OUTPUT QUALITY GUARANTEE (v7.0.0)
+        # Ensure final output meets minimum professional standards
+        # =====================================================
+        final_h, final_w = result.shape[:2]
+        min_output = 2000  # Minimum output dimension
+        max_final = max(final_h, final_w)
+
+        if max_final < min_output:
+            scale = min_output / max_final
+            result = cv2.resize(result, (int(final_w * scale), int(final_h * scale)),
+                              interpolation=cv2.INTER_LANCZOS4)
+            print(f"   ✓ Output quality guarantee: {final_w}x{final_h} → {result.shape[1]}x{result.shape[0]}")
 
         return result
 
