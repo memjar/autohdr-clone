@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Literal, List, Tuple
 from pathlib import Path
 
-PROCESSOR_VERSION = "6.1.0"  # v6.0.8 + cool white balance for target look
+PROCESSOR_VERSION = "6.2.0"  # Smart upscale + reduced noise + target look
 
 
 @dataclass
@@ -30,8 +30,8 @@ class BulletproofSettings:
     # Quality preset
     preset: Literal['natural', 'intense', 'professional'] = 'professional'
 
-    # Denoising (critical for clean output)
-    denoise_strength: Literal['light', 'medium', 'heavy', 'extreme'] = 'heavy'
+    # Denoising (medium = clean without over-smoothing)
+    denoise_strength: Literal['light', 'medium', 'heavy', 'extreme'] = 'medium'
 
     # HDR fusion
     hdr_strength: float = 0.6  # 0-1, how much HDR effect
@@ -73,7 +73,23 @@ class BulletproofProcessor:
         """Process single image to AutoHDR quality."""
 
         # =====================================================
-        # STAGE 1: INPUT CLEANING (Critical - removes all grain)
+        # STAGE 0: SMART UPSCALE (v6.2.0 - for low-res inputs)
+        # Upscale small images to ensure quality output
+        # =====================================================
+        h, w = image.shape[:2]
+        min_dimension = 2000  # Target minimum for professional output
+        max_side = max(h, w)
+
+        if max_side < min_dimension:
+            scale = min_dimension / max_side
+            new_w = int(w * scale)
+            new_h = int(h * scale)
+            # Use INTER_LANCZOS4 for high-quality upscaling
+            image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
+            print(f"   ↑ Upscaled {w}x{h} → {new_w}x{new_h} (Lanczos)")
+
+        # =====================================================
+        # STAGE 1: INPUT CLEANING (removes grain without over-smoothing)
         # =====================================================
         clean = self._deep_clean(image)
 
