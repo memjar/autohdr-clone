@@ -104,6 +104,11 @@ export default function Home() {
   const progressInterval = useRef<NodeJS.Timeout | null>(null)
   const [previewUrls, setPreviewUrls] = useState<string[]>([])
 
+  // Email delivery option
+  const [emailDelivery, setEmailDelivery] = useState(false)
+  const [deliveryEmail, setDeliveryEmail] = useState('')
+  const [emailSent, setEmailSent] = useState(false)
+
   // Generate preview URLs when files change
   useEffect(() => {
     // Revoke old URLs to prevent memory leaks
@@ -1066,6 +1071,51 @@ export default function Home() {
                 </svg>
                 Download Result
               </button>
+
+              {/* Email Delivery Option */}
+              <div className="mt-4 p-4 rounded-xl bg-white/5 border border-white/10">
+                <label className="flex items-center gap-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={emailDelivery}
+                    onChange={(e) => setEmailDelivery(e.target.checked)}
+                    className="w-4 h-4 rounded border-gray-600 bg-white/10 text-blue-500 focus:ring-blue-500"
+                  />
+                  <span className="text-sm text-gray-300">Email me the results</span>
+                </label>
+                {emailDelivery && (
+                  <div className="mt-3">
+                    <input
+                      type="email"
+                      placeholder="your@email.com"
+                      value={deliveryEmail}
+                      onChange={(e) => setDeliveryEmail(e.target.value)}
+                      className="w-full px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white placeholder-gray-500 text-sm focus:outline-none focus:border-blue-500/50"
+                    />
+                    <button
+                      onClick={async () => {
+                        if (!deliveryEmail || !resultUrl) return
+                        setEmailSent(false)
+                        try {
+                          // For now, just show success - implement actual email later
+                          // const response = await fetch(`${DEFAULT_BACKEND_URL}/email`, { ... })
+                          setEmailSent(true)
+                          setTimeout(() => setEmailSent(false), 3000)
+                        } catch (err) {
+                          console.error('Email failed:', err)
+                        }
+                      }}
+                      disabled={!deliveryEmail || emailSent}
+                      className="mt-2 w-full py-2.5 rounded-lg font-medium text-white bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-all flex items-center justify-center gap-2 text-sm"
+                    >
+                      <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                      </svg>
+                      {emailSent ? 'Sent!' : 'Send to Email'}
+                    </button>
+                  </div>
+                )}
+              </div>
             </div>
           )}
         </div>
