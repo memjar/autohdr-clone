@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Literal, List, Tuple
 from pathlib import Path
 
-PROCESSOR_VERSION = "18.0.0"  # Target-based adaptive exposure (190 target) + fine-tuning LUT
+PROCESSOR_VERSION = "20.5.0"  # Target look: bright, cool, ~68% highlights
 
 
 @dataclass
@@ -93,6 +93,18 @@ class BulletproofProcessor:
         # =====================================================
         result = self._polish_output(colored)
 
+        # =====================================================
+        # STAGE 5: FINAL L NORMALIZATION (v19.18)
+        # If L is too far from target, scale it back
+        # =====================================================
+        result = self._normalize_brightness(result)
+
+        # =====================================================
+        # STAGE 6: FINAL WARMTH (v20.3)
+        # Cool/neutral look: target +2 (nearly neutral white balance)
+        # =====================================================
+        result = self._apply_warmth(result, target_warmth=2.0)
+
         return result
 
     def process_brackets(self, brackets: List[np.ndarray]) -> np.ndarray:
@@ -110,22 +122,20 @@ class BulletproofProcessor:
         input_brightness = lab[:, :, 0].mean()
 
         # Scale boost based on how dark the input is
-        # Darker inputs need more aggressive boosting
-        if input_brightness < 160:
+        # v19.27: Reduced pre-boost for bright inputs (>145) to prevent overshoot
+        if input_brightness < 155:  # Reduced from 160
             l_float = lab[:, :, 0].astype(np.float32)
 
-            # Calculate total boost needed
             total_boost_needed = FINAL_TARGET - input_brightness
 
-            # For very dark inputs (<120), apply 55% of total boost in pre-processing
-            # For medium inputs (120-150), apply 40% of total boost
-            # LUT will handle the rest
             if input_brightness < 120:
                 pre_boost_ratio = 0.55
             elif input_brightness < 140:
                 pre_boost_ratio = 0.45
+            elif input_brightness < 150:
+                pre_boost_ratio = 0.30  # Reduced for 140-150 range
             else:
-                pre_boost_ratio = 0.35
+                pre_boost_ratio = 0.20  # Minimal for 150-155 range
 
             pre_boost = total_boost_needed * pre_boost_ratio
             l_new = l_float + pre_boost
@@ -310,21 +320,27 @@ class BulletproofProcessor:
 
     def _tone_map(self, image: np.ndarray) -> np.ndarray:
         """
-        AutoHDR-style tone mapping - preserve highlight distribution.
+        v19.0.0: Aggressive shadow lift to match target (only 0.4% shadows).
 
-        Target distribution: 48.7% in Highlight (150-200), peak at L=204
-        Problem: We were pulling highlights down to midtones.
-        Solution: Gentle shadow lift only, NO highlight pull, NO midtone compression.
+        Target analysis:
+        - Shadows (<50): 0.4%
+        - Midtones (50-200): 45.1%
+        - Highlights (>=200): 54.4%
+        - Mean L: 189.7
         """
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l_channel = lab[:, :, 0].astype(np.float32)
 
-        # GENTLE shadow lift only (no highlight pull!)
-        shadow_lift = np.clip((80 - l_channel) / 80, 0, 1) * 20
+        # AGGRESSIVE shadow lift - target has only 0.4% below L=50
+        # Lift everything below 80 strongly
+        shadow_lift = np.clip((80 - l_channel) / 80, 0, 1) * 45  # Increased from 20
         l_channel = l_channel + shadow_lift
 
-        # NO highlight pull - let highlights stay in 150-200 range
-        # NO midtone compression - this was pushing highlights down
+        # Additional boost for deep shadows (below 40) to virtually eliminate them
+        deep_shadow_lift = np.clip((40 - l_channel) / 40, 0, 1) * 25
+        l_channel = l_channel + deep_shadow_lift
+
+        # NO highlight pull - 54.4% should be above 200
 
         lab[:, :, 0] = np.clip(l_channel, 0, 255).astype(np.uint8)
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
@@ -357,9 +373,9 @@ class BulletproofProcessor:
         l_channel = lab[:, :, 0].astype(np.float32)
 
         # ============================================
-        # EXPOSURE: Fine-tuned
+        # EXPOSURE: Reduced further (v19.3 gave L=198-209)
         # ============================================
-        exposure_lift = 21
+        exposure_lift = 2  # Reduced from 8
         l_channel = l_channel + exposure_lift
 
         # ============================================
@@ -374,16 +390,36 @@ class BulletproofProcessor:
         l_channel = l_channel + shadow_mask * 35
 
         # ============================================
-        # WHITES: Balanced boost (reduce +6.4 overshoot)
+        # SCENE-AWARE HIGHLIGHT BOOST (v19.14)
+        # Account for scene brightness to avoid overshoot
         # ============================================
-        whites_mask = np.clip((l_channel - 150) / 40, 0, 1)
-        l_channel = l_channel + whites_mask * 28
 
-        # ============================================
-        # NEAR-WHITES: Moderate boost
-        # ============================================
-        nearwhite_mask = np.clip((l_channel - 130) / 40, 0, 1) * (1 - whites_mask)
-        l_channel = l_channel + nearwhite_mask * 20
+        # Measure current state
+        current_mean_L = np.mean(l_channel)
+        current_highlights = np.sum(l_channel >= 200) / l_channel.size * 100
+        target_highlights = 54.4
+        target_L = 189.7
+
+        # Calculate needed boost
+        highlight_gap = target_highlights - current_highlights
+        L_gap = target_L - current_mean_L
+
+        # Scale factor based on how far we are from target L
+        # If already too bright, reduce boost aggressively
+        if current_mean_L > 195:
+            scale = max(0.2, 1.0 - (current_mean_L - 195) / 20)  # 0.2 to 1.0
+        else:
+            scale = 1.0
+
+        if highlight_gap > 8:  # Far below target, strong boost
+            boost_strength = min(40, highlight_gap * 1.6) * scale
+            highlight_boost_mask = np.clip((l_channel - 130) / 45, 0, 1)
+            l_channel = l_channel + highlight_boost_mask * boost_strength
+        elif highlight_gap > 0:  # Close to target, moderate boost
+            boost_strength = min(25, highlight_gap * 1.5) * scale
+            highlight_boost_mask = np.clip((l_channel - 140) / 40, 0, 1)
+            l_channel = l_channel + highlight_boost_mask * boost_strength
+        # If gap <= 0, no boost needed
 
         # ============================================
         # BLACKS: Lift for richness
@@ -395,9 +431,14 @@ class BulletproofProcessor:
         result = cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
         # ============================================
-        # VIBRANCE: 1.58 (compensate for histogram desaturation)
+        # WARMTH: Moved to end of pipeline in v19.31
         # ============================================
-        result = self._apply_vibrance(result, 1.58)
+        # (warmth now applied in process() after all other adjustments)
+
+        # ============================================
+        # VIBRANCE: 1.20 (v20.3 - subtle, clean look)
+        # ============================================
+        result = self._apply_vibrance(result, 1.20)
 
         # Blue channel boost
         result = self._boost_blue_channel(result)
@@ -410,6 +451,10 @@ class BulletproofProcessor:
 
         # Reduce saturation in bright areas (helps white wall detection)
         result = self._reduce_highlight_saturation(result)
+
+        # v19.16: HIGHLIGHT REDISTRIBUTION
+        # Push bright pixels above 200 while reducing mid-tones to maintain overall L
+        result = self._redistribute_to_highlights(result)
 
         return result
 
@@ -440,6 +485,42 @@ class BulletproofProcessor:
 
         hsv = cv2.merge([h, s, v])
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+    def _redistribute_to_highlights(self, image: np.ndarray) -> np.ndarray:
+        """
+        v19.17: Redistribute brightness from mid-tones to highlights.
+        Added: Skip redistribution for already-bright scenes (L > 195).
+        """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l = lab[:, :, 0].astype(np.float32)
+
+        # Current state
+        current_L = np.mean(l)
+        current_highlights = np.sum(l >= 200) / l.size * 100
+        target_highlights = 54.4
+        target_L = 189.7
+
+        # v19.17: Skip redistribution for already-bright scenes
+        if current_L > 195:
+            return image
+
+        # Only redistribute if:
+        # - L is reasonably close to target (within 15)
+        # - Highlights are below target
+        if abs(current_L - target_L) < 15 and current_highlights < target_highlights - 5:
+            highlight_gap = target_highlights - current_highlights
+
+            # Boost bright pixels (L > 170)
+            bright_boost = np.clip((l - 170) / 30, 0, 1) * min(20, highlight_gap * 0.8)
+            l = l + bright_boost
+
+            # Slightly reduce mid-tones (120-170) to compensate
+            midtone_mask = np.clip((l - 120) / 50, 0, 1) * np.clip((170 - l) / 50, 0, 1)
+            midtone_reduction = midtone_mask * min(8, highlight_gap * 0.3)
+            l = l - midtone_reduction
+
+        lab[:, :, 0] = np.clip(l, 0, 255).astype(np.uint8)
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
     def _boost_blue_channel(self, image: np.ndarray) -> np.ndarray:
         """Boost blue channel (was -3.7)."""
@@ -723,6 +804,49 @@ class BulletproofProcessor:
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
+    def _apply_warmth(self, image: np.ndarray, target_warmth: float = 18.5) -> np.ndarray:
+        """
+        SCENE-ADAPTIVE warmth adjustment.
+
+        v19.3.0: Instead of applying fixed warmth, measure current R-B difference
+        and adjust to reach target warmth (+18.5 for real estate look).
+        """
+        result = image.astype(np.float32)
+
+        # Split into channels
+        b, g, r = cv2.split(result)
+
+        # Measure current warmth (R-B difference)
+        current_warmth = np.mean(r) - np.mean(b)
+
+        # Calculate needed adjustment to reach target
+        warmth_adjustment = target_warmth - current_warmth
+
+        # Apply full adjustment (v19.38)
+        # R increases by half, B decreases by half → total change = adjustment
+        shift = warmth_adjustment / 2
+        r = np.clip(r + shift, 0, 255)
+        b = np.clip(b - shift, 0, 255)
+        g = np.clip(g + shift * 0.3, 0, 255)
+
+        # Round and convert to uint8
+        r_out = np.round(r).astype(np.uint8)
+        b_out = np.round(b).astype(np.uint8)
+        g_out = np.round(g).astype(np.uint8)
+
+        # Check warmth after rounding and apply integer correction if needed (v19.42)
+        actual_warmth = np.mean(r_out.astype(np.float32)) - np.mean(b_out.astype(np.float32))
+        warmth_error = target_warmth - actual_warmth
+
+        # If error is significant, apply small integer correction
+        if abs(warmth_error) > 0.3:
+            # Add ±1 to a fraction of pixels to shift the mean
+            correction = int(np.round(warmth_error))
+            if correction != 0:
+                r_out = np.clip(r_out.astype(np.int16) + correction, 0, 255).astype(np.uint8)
+
+        return cv2.merge([b_out, g_out, r_out])
+
     def _apply_vibrance(self, image: np.ndarray, factor: float) -> np.ndarray:
         """Smart vibrance - boosts muted colors more."""
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
@@ -760,8 +884,9 @@ class BulletproofProcessor:
         # Stage 4: Skip local contrast (was causing +5.1 contrast diff)
         # result = self._subtle_local_contrast(result)
 
-        # Stage 5: Reduce contrast to match target (was -4.5, ease off)
-        result = self._reduce_contrast(result, factor=0.96)
+        # Stage 5: BOOST contrast for punchy look (v20.2)
+        # Instead of reducing, add punch
+        result = self._apply_contrast(result, factor=1.08)
 
         # Stage 6: Match histogram to target distribution
         result = self._match_histogram(result)
@@ -1104,6 +1229,41 @@ class BulletproofProcessor:
         result = cv2.addWeighted(softened, 0.35, image, 0.65, 0)
 
         return result
+
+    def _normalize_brightness(self, image: np.ndarray) -> np.ndarray:
+        """
+        v20.3: Normalize L to target with both boost and reduce.
+        Target: L=203 for bright, white-popping look.
+        """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l = lab[:, :, 0].astype(np.float32)
+
+        current_L = np.mean(l)
+        target_L = 203.0  # v20.3: Brighter to match target
+
+        # v20.5: More aggressive highlight lift to reach 68%
+        highlight_lift_mask = np.clip((l - 160) / 30, 0, 1) * np.clip((215 - l) / 25, 0, 1)
+        l = l + highlight_lift_mask * 20  # Push 160-200 range up by 20
+
+        if current_L < target_L - 2:
+            # BOOST brightness
+            deficit = target_L - current_L
+            midtone_mask = np.clip((l - 40) / 40, 0, 1) * np.clip((220 - l) / 40, 0, 1)
+            boost = min(25, deficit * 0.8)
+            l = l + midtone_mask * boost
+
+        elif current_L > target_L + 1:
+            # REDUCE brightness
+            overshoot = current_L - target_L
+            midtone_mask = np.clip((l - 60) / 35, 0, 1) * np.clip((220 - l) / 35, 0, 1)
+            if current_L > 210:
+                reduction = min(55, overshoot * 3.0)
+            else:
+                reduction = min(35, overshoot * 2.0)
+            l = l - midtone_mask * reduction
+
+        lab[:, :, 0] = np.clip(l, 0, 255).astype(np.uint8)
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
     def _add_clarity(self, image: np.ndarray, amount: float) -> np.ndarray:
         """

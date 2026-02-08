@@ -23,7 +23,7 @@ from typing import List, Optional
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query
+from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, Request
 from fastapi.responses import StreamingResponse, Response, JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -1117,6 +1117,133 @@ async def sky_replace(
     """
     # TODO: Implement with sky segmentation
     raise HTTPException(501, "Sky replacement coming soon. Requires segmentation model.")
+
+
+# ============================================
+# KLAUS/OLLAMA PROXY (for klaus.it.com)
+# ============================================
+
+import httpx
+
+OLLAMA_URL = "http://localhost:11434"
+
+@app.api_route("/ollama/{path:path}", methods=["GET", "POST", "OPTIONS"])
+async def ollama_proxy(path: str, request: Request):
+    """Proxy requests to local Ollama server for Klaus."""
+    # CORS headers for all responses
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type, Authorization",
+    }
+
+    # Handle CORS preflight
+    if request.method == "OPTIONS":
+        return Response(content="", status_code=200, headers=cors_headers)
+
+    try:
+        async with httpx.AsyncClient(timeout=300.0) as client:
+            # Forward the request to Ollama
+            url = f"{OLLAMA_URL}/{path}"
+
+            if request.method == "GET":
+                resp = await client.get(url)
+            else:
+                body = await request.body()
+                resp = await client.post(url, content=body, headers={"Content-Type": "application/json"})
+
+            return Response(
+                content=resp.content,
+                status_code=resp.status_code,
+                headers={
+                    "Content-Type": resp.headers.get("Content-Type", "application/json"),
+                    **cors_headers
+                },
+            )
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=502, headers=cors_headers)
+
+@app.get("/ollama-health")
+async def ollama_health():
+    """Check if Ollama is running."""
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get(f"{OLLAMA_URL}/api/tags")
+            if resp.status_code == 200:
+                return {"status": "healthy", "ollama": True}
+    except:
+        pass
+    return {"status": "unhealthy", "ollama": False}
+
+
+# ============================================
+# KLAUS STATIC FRONTEND (bypass broken Vercel deploy)
+# ============================================
+
+from fastapi.staticfiles import StaticFiles
+from fastapi.responses import FileResponse
+import os
+
+KLAUS_STATIC_DIR = "/private/tmp/autohdr-clone/klaus-static"
+
+@app.get("/klaus")
+@app.get("/klaus/")
+async def klaus_index():
+    """Serve Klaus frontend index.html"""
+    index_path = os.path.join(KLAUS_STATIC_DIR, "index.html")
+    if os.path.exists(index_path):
+        return FileResponse(index_path, media_type="text/html")
+    return JSONResponse({"error": "Klaus frontend not found"}, status_code=404)
+
+# Serve Klaus static assets
+if os.path.exists(KLAUS_STATIC_DIR):
+    app.mount("/klaus/assets", StaticFiles(directory=os.path.join(KLAUS_STATIC_DIR, "assets")), name="klaus-assets")
+
+
+# ============================================
+# KLAUS INTEGRATIONS API
+# ============================================
+
+from src.api.klaus_integrations import integrations, parse_and_execute
+
+@app.post("/klaus/execute")
+async def klaus_execute(request: Request):
+    """Execute a Klaus integration action"""
+    cors_headers = {
+        "Access-Control-Allow-Origin": "*",
+        "Access-Control-Allow-Methods": "POST, OPTIONS",
+        "Access-Control-Allow-Headers": "Content-Type",
+    }
+
+    try:
+        body = await request.json()
+        action = body.get("action")
+        params = body.get("params", {})
+
+        if not action:
+            return JSONResponse({"error": "No action specified"}, status_code=400, headers=cors_headers)
+
+        result = integrations.execute(action, params)
+        return JSONResponse(result, headers=cors_headers)
+
+    except Exception as e:
+        return JSONResponse({"error": str(e)}, status_code=500, headers=cors_headers)
+
+
+@app.get("/klaus/integrations")
+async def klaus_list_integrations():
+    """List available Klaus integrations"""
+    return JSONResponse({
+        "integrations": [
+            {"name": "imessage", "description": "Send iMessages", "params": ["to", "message"]},
+            {"name": "calendar", "description": "Check calendar events", "params": ["days"]},
+            {"name": "notes", "description": "Create Apple Notes", "params": ["title", "body"]},
+            {"name": "reminders", "description": "Create reminders", "params": ["title", "due"]},
+            {"name": "web_search", "description": "Search the web", "params": ["query", "num_results"]},
+            {"name": "filesystem", "description": "File operations", "params": ["operation", "path", "content"]},
+        ],
+        "status": "active"
+    })
 
 
 # ============================================
