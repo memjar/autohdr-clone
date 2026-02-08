@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Literal, List, Tuple
 from pathlib import Path
 
-PROCESSOR_VERSION = "6.2.0"  # Smart upscale + reduced noise + target look
+PROCESSOR_VERSION = "7.0.0"  # WOW FACTOR - Elon Musk level quality
 
 
 @dataclass
@@ -36,13 +36,13 @@ class BulletproofSettings:
     # HDR fusion
     hdr_strength: float = 0.6  # 0-1, how much HDR effect
 
-    # Output enhancement - AutoHDR-matched (soft but clean)
-    sharpen: bool = False  # Target is actually soft - no sharpening
-    sharpen_amount: float = 0.0
-    clarity: bool = False  # No extra clarity
-    clarity_amount: float = 0.0
+    # Output enhancement - WOW FACTOR
+    sharpen: bool = True  # Crisp, professional
+    sharpen_amount: float = 0.4  # Subtle but visible
+    clarity: bool = True  # Local contrast for depth
+    clarity_amount: float = 0.15  # Subtle clarity
     brighten: bool = True
-    brighten_amount: float = 2.2  # MORE - target has almost blown white walls
+    brighten_amount: float = 1.5  # Bright but not blown
 
     # Upscaling
     upscale: bool = False
@@ -300,56 +300,110 @@ class BulletproofProcessor:
     # =========================================================================
 
     def _tone_map(self, image: np.ndarray) -> np.ndarray:
-        """Professional tone mapping with S-curve - punchy like target."""
-        # Apply based on preset - INCREASED for punchy target match
-        if self.settings.preset == 'intense':
-            curve_strength = 0.35
-            contrast_boost = 1.20
-        elif self.settings.preset == 'professional':
-            curve_strength = 0.25  # Up from 0.2 - more punch
-            contrast_boost = 1.15  # Up from 1.1 - punchier
-        else:  # natural
-            curve_strength = 0.15
-            contrast_boost = 1.08
+        """
+        v7.0.0: WOW FACTOR tone mapping.
+        Elon Musk approach: 10x better than competition.
 
-        # S-curve on luminance
+        Goals:
+        - MASSIVE shadow lift (no dark areas)
+        - PUNCHY S-curve contrast
+        - BRIGHT overall (magazine quality)
+        """
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0].astype(np.float32) / 255.0
+        l = lab[:, :, 0].astype(np.float32)
 
-        # Sigmoid S-curve
-        midpoint = 0.5
-        steepness = 1 + curve_strength * 5
-        curved = 1 / (1 + np.exp(-steepness * (l_channel - midpoint)))
-        curved = (curved - curved.min()) / (curved.max() - curved.min())
+        # =====================================================
+        # STEP 1: AGGRESSIVE SHADOW LIFT
+        # Kill all shadows - make everything bright and visible
+        # =====================================================
+        shadow_mask = np.clip((100 - l) / 100, 0, 1)  # Stronger below 100
+        shadow_lift = shadow_mask * 60  # MASSIVE lift
+        l = l + shadow_lift
 
-        # Apply with blend
-        l_new = l_channel * (1 - curve_strength) + curved * curve_strength
+        # Extra boost for deep shadows
+        deep_shadow_mask = np.clip((50 - l) / 50, 0, 1)
+        l = l + deep_shadow_mask * 30
 
-        # Subtle contrast boost
-        l_new = (l_new - 0.5) * contrast_boost + 0.5
+        # =====================================================
+        # STEP 2: S-CURVE FOR PUNCH
+        # Professional contrast that pops
+        # =====================================================
+        l_norm = l / 255.0
 
-        lab[:, :, 0] = np.clip(l_new * 255, 0, 255).astype(np.uint8)
+        # Aggressive S-curve
+        midpoint = 0.45  # Slightly lower midpoint = brighter overall
+        steepness = 3.5  # Punchy curve
+        curved = 1 / (1 + np.exp(-steepness * (l_norm - midpoint)))
+        curved = (curved - curved.min()) / (curved.max() - curved.min() + 1e-6)
+
+        # Blend 40% S-curve for strong effect
+        l_norm = l_norm * 0.6 + curved * 0.4
+
+        # =====================================================
+        # STEP 3: BRIGHTNESS BOOST
+        # Target: bright, magazine-quality output
+        # =====================================================
+        l_norm = l_norm * 1.15 + 0.05  # 15% brighter + offset
+
+        # =====================================================
+        # STEP 4: CONTRAST POP
+        # Punch up the contrast for wow factor
+        # =====================================================
+        l_norm = (l_norm - 0.5) * 1.20 + 0.5  # 20% more contrast
+
+        lab[:, :, 0] = np.clip(l_norm * 255, 0, 255).astype(np.uint8)
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
     def _color_correct(self, image: np.ndarray) -> np.ndarray:
-        """Auto white balance, vibrance, and blue boost for vivid RE look."""
-        # Auto white balance (gray world)
+        """
+        v7.0.0: WOW FACTOR color correction.
+        Colors that POP and make users say "holy shit".
+        """
+        # Auto white balance
         result = self._auto_white_balance(image)
 
-        # Vibrance boost (preset-based) - INCREASED for vivid target match
-        if self.settings.preset == 'intense':
-            vibrance = 1.30
-        elif self.settings.preset == 'professional':
-            vibrance = 1.30  # MORE - match target vivid colors
-        else:
-            vibrance = 1.10
+        # =====================================================
+        # VIBRANCE: Make colors POP (not oversaturated)
+        # Vibrance boosts muted colors, leaves saturated alone
+        # =====================================================
+        result = self._apply_vibrance(result, 1.45)  # Strong vibrance
 
-        result = self._apply_vibrance(result, vibrance)
-
-        # Blue boost - target has EXTREMELY vivid blues
-        result = self._boost_blues(result)
+        # =====================================================
+        # SELECTIVE COLOR BOOST
+        # Make specific colors pop: blues, greens, warm tones
+        # =====================================================
+        result = self._boost_colors_selective(result)
 
         return result
+
+    def _boost_colors_selective(self, image: np.ndarray) -> np.ndarray:
+        """
+        Selectively boost colors for WOW factor.
+        - Blues: +25% saturation (sky, equipment)
+        - Oranges/Reds: +15% (skin tones, warm objects)
+        - Greens: +20% (plants, outdoor)
+        """
+        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
+        h, s, v = cv2.split(hsv)
+
+        # Blue range (100-130 in OpenCV HSV)
+        blue_mask = ((h >= 100) & (h <= 130)).astype(np.float32)
+        s = s + blue_mask * s * 0.25  # +25% saturation for blues
+
+        # Orange/Red range (0-20 and 160-180)
+        warm_mask = (((h >= 0) & (h <= 20)) | ((h >= 160) & (h <= 180))).astype(np.float32)
+        s = s + warm_mask * s * 0.15  # +15% for warm tones
+
+        # Green range (35-85)
+        green_mask = ((h >= 35) & (h <= 85)).astype(np.float32)
+        s = s + green_mask * s * 0.20  # +20% for greens
+
+        # Also slightly boost value for these colors (makes them pop more)
+        v = v + blue_mask * 10
+        v = v + green_mask * 8
+
+        hsv = cv2.merge([h, np.clip(s, 0, 255), np.clip(v, 0, 255)])
+        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
     def _auto_white_balance_cool(self, image: np.ndarray) -> np.ndarray:
         """White balance with slight cool bias for clean real estate look."""
@@ -546,22 +600,42 @@ class BulletproofProcessor:
     # =========================================================================
 
     def _polish_output(self, image: np.ndarray) -> np.ndarray:
-        """Final polish: soften, brighten (AutoHDR style = smooth)."""
+        """
+        v7.0.0: WOW FACTOR final polish.
+        Crisp, bright, professional output that impresses.
+        """
         result = image.copy()
 
-        # SOFTEN - AutoHDR produces very soft images (36x less sharp than input!)
-        # This is the key to their buttery smooth look
-        result = self._soften(result)
-
-        # Brighten
+        # Brighten first
         if self.settings.brighten:
             result = self._brighten(result, self.settings.brighten_amount)
+
+        # Add clarity (local contrast) for depth and definition
+        if self.settings.clarity:
+            result = self._add_clarity(result, self.settings.clarity_amount)
+
+        # Sharpen for crisp, professional look
+        if self.settings.sharpen:
+            result = self._sharpen(result, self.settings.sharpen_amount)
 
         # Upscale (if requested)
         if self.settings.upscale and self.settings.upscale_factor > 1.0:
             result = self._upscale(result, self.settings.upscale_factor)
 
         return result
+
+    def _sharpen(self, image: np.ndarray, amount: float) -> np.ndarray:
+        """
+        Professional sharpening using unsharp mask.
+        Amount 0.3-0.5 is subtle but visible.
+        """
+        # Gaussian blur for unsharp mask
+        blurred = cv2.GaussianBlur(image, (0, 0), sigmaX=1.5)
+
+        # Unsharp mask: original + (original - blurred) * amount
+        sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
+
+        return np.clip(sharpened, 0, 255).astype(np.uint8)
 
     def _apply_cool_wb(self, image: np.ndarray) -> np.ndarray:
         """
