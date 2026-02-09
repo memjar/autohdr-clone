@@ -1,0 +1,22 @@
+[
+  {"id": 1, "department": "Engineering", "tenure_years": 3, "satisfaction": 4, "work_life_balance": 5, "career_growth": 4, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Great team culture"},
+  {"id": 2, "department": "Sales", "tenure_years": 5, "satisfaction": 3, "work_life_balance": 2, "career_growth": 4, "manager_rating": 3, "recommend_employer": "Maybe", "comments": "High pressure environment"},
+  {"id": 3, "department": "Marketing", "tenure_years": 2, "satisfaction": 5, "work_life_balance": 4, "career_growth": 5, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Love the creative freedom"},
+  {"id": 4, "department": "Engineering", "tenure_years": 7, "satisfaction": 4, "work_life_balance": 4, "career_growth": 3, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Good benefits"},
+  {"id": 5, "department": "HR", "tenure_years": 4, "satisfaction": 5, "work_life_balance": 5, "career_growth": 4, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Supportive management"},
+  {"id": 6, "department": "Sales", "tenure_years": 1, "satisfaction": 2, "work_life_balance": 2, "career_growth": 3, "manager_rating": 2, "recommend_employer": "No", "comments": "Unrealistic quotas"},
+  {"id": 7, "department": "Engineering", "tenure_years": 2, "satisfaction": 5, "work_life_balance": 5, "career_growth": 5, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Best job ever"},
+  {"id": 8, "department": "Finance", "tenure_years": 6, "satisfaction": 4, "work_life_balance": 3, "career_growth": 4, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Stable environment"},
+  {"id": 9, "department": "Marketing", "tenure_years": 3, "satisfaction": 4, "work_life_balance": 4, "career_growth": 4, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Good collaboration"},
+  {"id": 10, "department": "Engineering", "tenure_years": 4, "satisfaction": 3, "work_life_balance": 3, "career_growth": 2, "manager_rating": 3, "recommend_employer": "Maybe", "comments": "Need more growth opportunities"},
+  {"id": 11, "department": "Sales", "tenure_years": 2, "satisfaction": 4, "work_life_balance": 3, "career_growth": 5, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Great commissions"},
+  {"id": 12, "department": "HR", "tenure_years": 8, "satisfaction": 4, "work_life_balance": 4, "career_growth": 3, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Meaningful work"},
+  {"id": 13, "department": "Finance", "tenure_years": 3, "satisfaction": 3, "work_life_balance": 2, "career_growth": 3, "manager_rating": 3, "recommend_employer": "Maybe", "comments": "Busy quarter-ends"},
+  {"id": 14, "department": "Engineering", "tenure_years": 1, "satisfaction": 5, "work_life_balance": 5, "career_growth": 5, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Excellent onboarding"},
+  {"id": 15, "department": "Marketing", "tenure_years": 5, "satisfaction": 4, "work_life_balance": 4, "career_growth": 4, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Fun campaigns"},
+  {"id": 16, "department": "Sales", "tenure_years": 4, "satisfaction": 3, "work_life_balance": 2, "career_growth": 4, "manager_rating": 3, "recommend_employer": "Maybe", "comments": "Travel is exhausting"},
+  {"id": 17, "department": "Engineering", "tenure_years": 6, "satisfaction": 4, "work_life_balance": 4, "career_growth": 4, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Good tech stack"},
+  {"id": 18, "department": "HR", "tenure_years": 2, "satisfaction": 5, "work_life_balance": 5, "career_growth": 5, "manager_rating": 5, "recommend_employer": "Yes", "comments": "Love helping people"},
+  {"id": 19, "department": "Finance", "tenure_years": 4, "satisfaction": 4, "work_life_balance": 3, "career_growth": 4, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Good salary"},
+  {"id": 20, "department": "Marketing", "tenure_years": 1, "satisfaction": 4, "work_life_balance": 4, "career_growth": 5, "manager_rating": 4, "recommend_employer": "Yes", "comments": "Fast-paced learning"}
+]

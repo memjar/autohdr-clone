@@ -1,0 +1,16 @@
+response_id,product_name,user_type,rating,ease_of_use,feature_completeness,value_for_money,support_quality,would_repurchase,feature_request,submitted_date
+1,HDRit Pro,Professional,5,5,4,5,5,Definitely,Batch processing,2026-01-10
+2,HDRit Pro,Hobbyist,4,4,4,4,4,Probably,More presets,2026-01-11
+3,HDRit Basic,Hobbyist,4,5,3,5,4,Definitely,RAW support,2026-01-12
+4,HDRit Pro,Professional,5,4,5,4,5,Definitely,API access,2026-01-13
+5,HDRit Basic,Beginner,5,5,4,5,5,Definitely,,2026-01-14
+6,HDRit Pro,Professional,4,3,4,3,4,Probably,Better docs,2026-01-15
+7,HDRit Basic,Hobbyist,3,4,2,4,3,Maybe,More features,2026-01-16
+8,HDRit Pro,Professional,5,5,5,5,5,Definitely,Mobile app,2026-01-17
+9,HDRit Basic,Beginner,4,5,3,5,4,Probably,,2026-01-18
+10,HDRit Pro,Hobbyist,4,4,4,4,4,Definitely,Cloud sync,2026-01-19
+11,HDRit Pro,Professional,5,4,5,4,5,Definitely,Lightroom plugin,2026-01-20
+12,HDRit Basic,Beginner,5,5,4,5,5,Definitely,,2026-01-21
+13,HDRit Pro,Professional,4,4,4,3,4,Probably,Lower price,2026-01-22
+14,HDRit Basic,Hobbyist,4,5,3,5,4,Definitely,HDR video,2026-01-23
+15,HDRit Pro,Professional,5,5,5,5,5,Definitely,,2026-01-24
