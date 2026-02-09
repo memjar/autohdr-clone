@@ -1,0 +1,9 @@
+response_id,product,rating,ease_of_use,value,would_repurchase,feedback_date
+1,HDRit Pro,5,5,5,Yes,2022-02-10
+2,HDRit Basic,4,5,4,Yes,2022-03-15
+3,HDRit Pro,4,4,3,Maybe,2022-04-20
+4,HDRit Basic,5,5,5,Yes,2022-05-25
+5,HDRit Pro,3,3,3,Maybe,2022-06-30
+6,HDRit Basic,4,4,4,Yes,2022-07-15
+7,HDRit Pro,5,5,4,Yes,2022-08-20
+8,HDRit Basic,4,5,5,Yes,2022-09-10

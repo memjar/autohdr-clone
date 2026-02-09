@@ -1,0 +1,8 @@
+[
+  {"id": 1, "segment": "Enterprise", "interest_level": 5, "budget_range": "High", "timeline": "Q1", "year": 2021},
+  {"id": 2, "segment": "SMB", "interest_level": 4, "budget_range": "Medium", "timeline": "Q2", "year": 2021},
+  {"id": 3, "segment": "Consumer", "interest_level": 3, "budget_range": "Low", "timeline": "Q3", "year": 2021},
+  {"id": 4, "segment": "Enterprise", "interest_level": 5, "budget_range": "High", "timeline": "Q1", "year": 2021},
+  {"id": 5, "segment": "SMB", "interest_level": 4, "budget_range": "Medium", "timeline": "Q2", "year": 2021},
+  {"id": 6, "segment": "Consumer", "interest_level": 4, "budget_range": "Low", "timeline": "Q4", "year": 2021}
+]
