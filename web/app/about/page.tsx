@@ -34,7 +34,7 @@ export default function About() {
         <div className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-purple-500/5 rounded-full blur-3xl" />
       </div>
 
-      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8">
+      <div className="relative z-10 max-w-4xl mx-auto px-4 sm:px-6 py-8 pb-24">
       {/* Navigation */}
       <nav className="flex justify-between items-center mb-12 pb-6 border-b border-white/5">
         <a href="/" className="flex items-center gap-2">

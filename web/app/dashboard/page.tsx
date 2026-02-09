@@ -130,7 +130,7 @@ export default function DashboardPage() {
   const [settings, setSettings] = useState<StyleSettings>(defaultSettings);
 
   return (
-    <div className="min-h-screen bg-black text-white">
+    <div className="min-h-screen bg-black text-white pb-24">
       {/* Header */}
       <header className="border-b border-gray-800 px-6 py-4">
         <div className="max-w-7xl mx-auto flex justify-between items-center">
