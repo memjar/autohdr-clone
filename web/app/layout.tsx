@@ -93,7 +93,7 @@ export default function RootLayout({
         {/* Color scheme for native UI elements */}
         <meta name="color-scheme" content="dark" />
       </head>
-      <body className="bg-black text-white min-h-screen overscroll-none">
+      <body className="bg-black text-white min-h-screen">
         {children}
       </body>
     </html>
