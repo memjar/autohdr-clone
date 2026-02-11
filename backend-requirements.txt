@@ -8,6 +8,9 @@ numpy>=1.24.0
 # RAW file support (Sony ARW, Canon CR2, Nikon NEF, etc.)
 rawpy>=0.18.0
 
+# HEIC/HEIF support (iPhone photos)
+pillow-heif>=0.13.0
+
 # API server
 fastapi>=0.100.0
 uvicorn[standard]>=0.23.0

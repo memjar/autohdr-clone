@@ -534,12 +534,12 @@ export default function Home() {
                   </SignedIn>
                   <SignedOut>
                     <SignInButton mode="modal">
-                      <button className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">
+                      <button className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white border border-white/20 hover:border-white/40 hover:bg-white/5 rounded-lg transition">
                         Sign In
                       </button>
                     </SignInButton>
                     <SignUpButton mode="modal">
-                      <button className="px-5 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
+                      <button className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-lg transition shadow-lg shadow-blue-500/25">
                         Get Started
                       </button>
                     </SignUpButton>
@@ -547,8 +547,8 @@ export default function Home() {
                 </>
               ) : (
                 <>
-                  <a href="/sign-in" className="px-4 py-2 text-sm text-gray-300 hover:text-white hover:bg-white/5 rounded-lg transition">Sign In</a>
-                  <a href="/sign-up" className="px-5 py-2 text-sm font-medium text-black bg-white hover:bg-gray-100 rounded-lg transition">
+                  <a href="/sign-in" className="px-4 py-2 text-sm font-medium text-white/80 hover:text-white border border-white/20 hover:border-white/40 hover:bg-white/5 rounded-lg transition">Sign In</a>
+                  <a href="/sign-up" className="px-5 py-2.5 text-sm font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-lg transition shadow-lg shadow-blue-500/25">
                     Get Started
                   </a>
                 </>
@@ -640,7 +640,7 @@ export default function Home() {
                   <>
                     <SignedOut>
                       <SignUpButton mode="modal">
-                        <button onClick={() => setMobileMenuOpen(false)} className="w-full py-4 text-base font-semibold text-black bg-white hover:bg-gray-100 rounded-2xl transition">
+                        <button onClick={() => setMobileMenuOpen(false)} className="w-full py-4 text-base font-semibold text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-2xl transition shadow-lg shadow-blue-500/25">
                           Get Started Free
                         </button>
                       </SignUpButton>
@@ -658,7 +658,7 @@ export default function Home() {
                   </>
                 ) : (
                   <>
-                    <a href="/sign-up" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-semibold text-center text-black bg-white hover:bg-gray-100 rounded-2xl transition">
+                    <a href="/sign-up" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-semibold text-center text-white bg-gradient-to-r from-blue-500 to-purple-600 hover:from-blue-600 hover:to-purple-700 rounded-2xl transition shadow-lg shadow-blue-500/25">
                       Get Started Free
                     </a>
                     <a href="/sign-in" onClick={() => setMobileMenuOpen(false)} className="block w-full py-4 text-base font-medium text-center text-white bg-white/10 hover:bg-white/15 rounded-2xl transition">

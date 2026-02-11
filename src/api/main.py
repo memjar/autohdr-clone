@@ -124,6 +124,15 @@ except ImportError:
     HAS_PRO_PROCESSOR = False
     PRO_VERSION = None
 
+# Smart bracket grouping (EXIF-based scene detection)
+try:
+    from src.core.hdr_merge import group_by_scene, pick_sharpest, merge_with_sharpness_weights
+    HAS_SMART_GROUPING = True
+    print("✓ Smart bracket grouping loaded - EXIF scene detection + sharpness weighting")
+except ImportError as e:
+    HAS_SMART_GROUPING = False
+    print(f"ℹ️  Smart bracket grouping not available: {e}")
+
 # Optional modules
 HAS_HDR_MERGER = False
 HAS_TWILIGHT = False
@@ -369,7 +378,17 @@ def read_image_from_upload(file: UploadFile) -> np.ndarray:
     return image
 
 
-async def read_image_async(file: UploadFile) -> np.ndarray:
+def _cap_resolution(image: np.ndarray, max_dim: int = 3000) -> np.ndarray:
+    """Downscale image if either dimension exceeds max_dim. Preserves aspect ratio."""
+    h, w = image.shape[:2]
+    if max(h, w) <= max_dim:
+        return image
+    scale = max_dim / max(h, w)
+    new_w, new_h = int(w * scale), int(h * scale)
+    return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_AREA)
+
+
+async def read_image_async(file: UploadFile, half_size: bool = True) -> np.ndarray:
     """Async version of read_image_from_upload."""
     contents = await file.read()
     filename = file.filename or "image.jpg"
@@ -383,11 +402,12 @@ async def read_image_async(file: UploadFile) -> np.ndarray:
             with rawpy.imread(io.BytesIO(contents)) as raw:
                 rgb = raw.postprocess(
                     use_camera_wb=True,
-                    half_size=False,
+                    half_size=half_size,
                     no_auto_bright=False,
                     output_bps=8
                 )
-                return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                image = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+                return _cap_resolution(image)
         except Exception as e:
             raise HTTPException(400, f"Could not decode RAW file {filename}: {str(e)}")
 
@@ -399,7 +419,8 @@ async def read_image_async(file: UploadFile) -> np.ndarray:
             pillow_heif.register_heif_opener()
             heif_image = Image.open(io.BytesIO(contents))
             rgb = np.array(heif_image.convert('RGB'))
-            return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            image = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+            return _cap_resolution(image)
         except ImportError:
             raise HTTPException(400, "HEIC support not available. Install pillow-heif.")
         except Exception as e:
@@ -410,7 +431,7 @@ async def read_image_async(file: UploadFile) -> np.ndarray:
     image = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
     if image is None:
         raise HTTPException(400, f"Could not decode image: {filename}")
-    return image
+    return _cap_resolution(image)
 
 
 def image_to_bytes(image: np.ndarray, format: str = ".jpg", quality: int = 90) -> bytes:
@@ -995,9 +1016,14 @@ async def process_images(
         # STEP 1: Read all images (including RAW)
         # ==========================================
         image_arrays = []
+        raw_bytes_list = []  # Keep original bytes for EXIF extraction
         for i, upload in enumerate(images):
             print(f"   Reading [{i+1}/{len(images)}]: {upload.filename}")
             try:
+                # Read raw bytes first (for EXIF), then decode
+                raw_bytes = await upload.read()
+                await upload.seek(0)  # Reset for read_image_async
+                raw_bytes_list.append(raw_bytes)
                 img = await read_image_async(upload)
                 print(f"   ✓ Loaded: {img.shape[1]}x{img.shape[0]} pixels")
                 image_arrays.append(img)
@@ -1015,7 +1041,8 @@ async def process_images(
             print(f"   🎨 Perfect Edit mode: {len(image_arrays)} image(s)")
             results = []
             for idx, img in enumerate(image_arrays):
-                enhanced = apply_enhance_processing(
+                enhanced = await asyncio.to_thread(
+                    apply_enhance_processing,
                     img,
                     brightness=brightness,
                     contrast=contrast,
@@ -1067,35 +1094,142 @@ async def process_images(
                 )
 
         # HDR MODE: Single image enhancement or bracket merge
-        # Use V14 Golden Processor - THE ~90% AutoHDR match processor!
-        if len(image_arrays) > 1 and HAS_V14_GOLDEN:
-            # V14 Golden Processor with Laplacian pyramid fusion for brackets
-            processor = V14GoldenProcessor(V14Settings())
-            print(f"   ⭐ Using V14 Golden Processor v{V14_VERSION} for {len(image_arrays)} brackets...")
-            result = processor.process_brackets(image_arrays)
-        elif len(image_arrays) > 1 and HAS_BULLETPROOF:
-            # Fallback to Bulletproof if V14 not available
-            bp_settings = BulletproofSettings(
-                preset='professional',
-                denoise_strength='heavy',
-                sharpen=False,
-                brighten=True,
-                brighten_amount=1.5,
-            )
-            processor = BulletproofProcessor(bp_settings)
+        if len(image_arrays) > 1:
 
+            # Smart grouping for 3+ images: detect scenes via EXIF
+            if len(image_arrays) > 2 and HAS_SMART_GROUPING:
+                print(f"   🧠 Smart grouping {len(image_arrays)} images by scene...")
+                scene_groups = await asyncio.to_thread(
+                    group_by_scene, image_arrays, raw_bytes_list
+                )
+                print(f"   📂 Detected {len(scene_groups)} scene group(s)")
+
+                results = []
+                group_labels = []
+                for group in scene_groups:
+                    if group.group_type == "single":
+                        # Single image — run through standard processor
+                        print(f"   🖼️  {group.scene_id}: single image → standard processing")
+                        if HAS_BULLETPROOF:
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy',
+                                                       sharpen=False, brighten=True, brighten_amount=1.5)
+                            proc = BulletproofProcessor(bp_s)
+                        else:
+                            raise HTTPException(500, "No processor available")
+                        if HAS_TURBO:
+                            proc = TurboProcessor(proc)
+                        result = await asyncio.to_thread(proc.process, group.images[0])
+                        results.append(result)
+                        group_labels.append(f"{group.scene_id}_single")
+
+                    elif group.group_type == "duplicate":
+                        # Duplicates — pick sharpest, then enhance
+                        print(f"   🔍 {group.scene_id}: {len(group.images)} duplicates → picking sharpest")
+                        best = await asyncio.to_thread(pick_sharpest, group.images)
+                        if HAS_BULLETPROOF:
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy',
+                                                       sharpen=False, brighten=True, brighten_amount=1.5)
+                            proc = BulletproofProcessor(bp_s)
+                        else:
+                            raise HTTPException(500, "No processor available")
+                        if HAS_TURBO:
+                            proc = TurboProcessor(proc)
+                        result = await asyncio.to_thread(proc.process, best)
+                        results.append(result)
+                        group_labels.append(f"{group.scene_id}_best")
+
+                    elif group.group_type == "bracket":
+                        # Brackets — sharpness-weighted Mertens fusion
+                        print(f"   📸 {group.scene_id}: {len(group.images)} brackets → sharpness-weighted merge")
+                        result = await asyncio.to_thread(merge_with_sharpness_weights, group.images)
+                        # Post-process the merged result
+                        if HAS_BULLETPROOF:
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='medium',
+                                                       sharpen=False, brighten=True, brighten_amount=1.2)
+                            proc = BulletproofProcessor(bp_s)
+                        else:
+                            raise HTTPException(500, "No processor available")
+                        if HAS_TURBO:
+                            proc = TurboProcessor(proc)
+                        result = await asyncio.to_thread(proc.process, result)
+                        results.append(result)
+                        group_labels.append(f"{group.scene_id}_merged")
+
+                elapsed_ms = (time.time() - start_time) * 1000
+
+                # Single group → return single JPEG
+                if len(results) == 1:
+                    result_bytes = image_to_bytes(results[0], ".jpg", quality=95)
+                    print(f"   ✓ Smart grouping complete in {elapsed_ms:.0f}ms (1 group)")
+                    return Response(
+                        content=result_bytes,
+                        media_type="image/jpeg",
+                        headers={
+                            "Content-Disposition": f'attachment; filename="hdrit_{mode}.jpg"',
+                            "Content-Length": str(len(result_bytes)),
+                            "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                            "X-Images-Processed": str(len(images)),
+                            "X-Processor": "Smart Grouping + Bulletproof",
+                            "X-Scene-Groups": "1",
+                            "Access-Control-Allow-Origin": "*",
+                            "Access-Control-Expose-Headers": "Content-Length, X-Processing-Time-Ms, X-Processor, X-Scene-Groups",
+                            "Cache-Control": "no-cache",
+                        }
+                    )
+
+                # Multiple groups → return ZIP
+                import zipfile
+                zip_buffer = io.BytesIO()
+                with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zf:
+                    for i, (result, label) in enumerate(zip(results, group_labels)):
+                        img_bytes = image_to_bytes(result, ".jpg", quality=95)
+                        zf.writestr(f"hdrit_{label}.jpg", img_bytes)
+                zip_buffer.seek(0)
+                print(f"   ✓ Smart grouping complete in {elapsed_ms:.0f}ms ({len(results)} groups)")
+                return Response(
+                    content=zip_buffer.getvalue(),
+                    media_type="application/zip",
+                    headers={
+                        "Content-Disposition": f'attachment; filename="hdrit_scenes.zip"',
+                        "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
+                        "X-Images-Processed": str(len(images)),
+                        "X-Scene-Groups": str(len(results)),
+                        "Access-Control-Allow-Origin": "*",
+                        "Access-Control-Expose-Headers": "X-Processing-Time-Ms, X-Scene-Groups",
+                    }
+                )
+
+            # Direct bracket merge (2 images, or smart grouping unavailable)
+            if HAS_V14_GOLDEN:
+                processor = V14GoldenProcessor(V14Settings())
+                proc_version = f"V14 Golden v{V14_VERSION}"
+            elif HAS_BULLETPROOF:
+                bp_settings = BulletproofSettings(
+                    preset='professional',
+                    denoise_strength='heavy',
+                    sharpen=False,
+                    brighten=True,
+                    brighten_amount=1.5,
+                )
+                processor = BulletproofProcessor(bp_settings)
+                proc_version = f"Bulletproof v{BP_VERSION}"
+            else:
+                raise HTTPException(500, "No bracket processor available")
+
+            # Wrap with Turbo Mode for 4x speedup
             if HAS_TURBO:
                 processor = TurboProcessor(processor)
-                print(f"   🚀 Using Bulletproof v{BP_VERSION} + Turbo Mode for {len(image_arrays)} brackets...")
-            else:
-                print(f"   🔥 Using Bulletproof Processor v{BP_VERSION} for {len(image_arrays)} brackets...")
+                proc_version += " + Turbo"
 
-            result = processor.process_brackets(image_arrays)
+            print(f"   🚀 Using {proc_version} for {len(image_arrays)} brackets...")
+
+            # Run CPU-heavy bracket merge in thread pool (non-blocking)
+            result = await asyncio.to_thread(processor.process_brackets, image_arrays)
 
             # Encode and return
             result_bytes = image_to_bytes(result, ".jpg", quality=95)
             elapsed_ms = (time.time() - start_time) * 1000
-            print(f"   ✓ Clean Processor complete in {elapsed_ms:.0f}ms")
+            print(f"   ✓ Bracket merge complete in {elapsed_ms:.0f}ms")
             print(f"   📦 Response size: {len(result_bytes) / 1024:.1f} KB")
 
             return Response(
@@ -1106,7 +1240,7 @@ async def process_images(
                     "Content-Length": str(len(result_bytes)),
                     "X-Processing-Time-Ms": str(round(elapsed_ms, 2)),
                     "X-Images-Processed": str(len(images)),
-                    "X-Processor": f"Clean v{CLEAN_VERSION}",
+                    "X-Processor": proc_version,
                     "Access-Control-Allow-Origin": "*",
                     "Access-Control-Expose-Headers": "Content-Length, X-Processing-Time-Ms, X-Processor",
                     "Cache-Control": "no-cache",
@@ -1120,7 +1254,6 @@ async def process_images(
             # V14 Golden Processor - THE ~90% AutoHDR match processor!
             print("   ⭐ Using V14 Golden Processor (THE golden processor)...")
             processor = V14GoldenProcessor(V14Settings())
-            result = processor.process(base_image)
             proc_version = f"V14 Golden v{V14_VERSION}"
         elif HAS_BULLETPROOF:
             # Fallback to Bulletproof
@@ -1133,16 +1266,10 @@ async def process_images(
                 brighten_amount=1.5,
             )
             processor = BulletproofProcessor(bp_settings)
-            if HAS_TURBO:
-                processor = TurboProcessor(processor)
-                proc_version = f"Bulletproof v{BP_VERSION} + Turbo"
-            else:
-                proc_version = f"Bulletproof v{BP_VERSION}"
-            result = processor.process(base_image)
+            proc_version = f"Bulletproof v{BP_VERSION}"
         elif HAS_CLEAN_PROCESSOR:
             clean_settings = CleanSettings(preset='natural')
             processor = HDRitProcessor(clean_settings)
-            result = processor.process(base_image)
             proc_version = f"Clean v{CLEAN_VERSION}"
         else:
             # Legacy fallback
@@ -1153,8 +1280,15 @@ async def process_images(
                 white_balance=whiteBalance,
             )
             processor = AutoHDRProcessor(settings)
-            result = processor.process(base_image)
             proc_version = "Legacy"
+
+        # Wrap with Turbo Mode for 4x speedup (GPU-accelerated denoising)
+        if HAS_TURBO:
+            processor = TurboProcessor(processor)
+            proc_version += " + Turbo"
+
+        # Run CPU-heavy processing in thread pool (non-blocking)
+        result = await asyncio.to_thread(processor.process, base_image)
 
         # Encode and return
         result_bytes = image_to_bytes(result, ".jpg", quality=95)
