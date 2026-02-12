@@ -560,10 +560,15 @@ class BulletproofProcessor:
         This prevents the stacking artifacts from v7 which had:
         shadow lift + deep shadow lift + S-curve + brightness*1.15 + contrast*1.08
 
+        Adaptive exposure: Dark scenes (mean L < 120) receive progressively
+        stronger exposure and shadow lift (up to 2.5x at L=30) so that
+        severely underexposed interiors are properly recovered. Images with
+        normal brightness (L >= 120) are unaffected.
+
         Lightroom equivalents applied:
-        - Exposure +0.7: global L lift of ~17.5
+        - Exposure +0.7: global L lift of ~17.5 (scaled adaptively for dark scenes)
         - Highlights -70: pull top 30% down by ~21
-        - Shadows +60: lift bottom 35% by ~18
+        - Shadows +60: lift bottom 35% by ~18 (scaled up to 1.8x for dark scenes)
         - Whites +15: extend white point by ~2.25
         - Blacks -25: deepen black point by ~3.75
         - Gentle S-curve (steepness 1.5, 15% blend)
@@ -571,9 +576,21 @@ class BulletproofProcessor:
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
         l = lab[:, :, 0].astype(np.float32)
 
+        # --- ADAPTIVE EXPOSURE for dark scenes ---
+        # Normal images (mean L > 120) use settings as-is.
+        # Dark images (mean L < 100) get progressively stronger lift.
+        # This prevents underexposed interiors from staying too dark.
+        mean_l = float(np.mean(l))
+        if mean_l < 120:
+            # Scale factor: 1.0 at L=120, up to 2.5 at L=30
+            # Smooth ramp using inverse proportion
+            adaptive_scale = np.clip(1.0 + (120.0 - mean_l) / 60.0, 1.0, 2.5)
+        else:
+            adaptive_scale = 1.0
+
         # --- EXPOSURE (global lift) ---
         # LR +1.0 ≈ +25 in L, so +0.7 ≈ +17.5
-        exposure_lift = self.settings.exposure * 25.0
+        exposure_lift = self.settings.exposure * 25.0 * adaptive_scale
         l = l + exposure_lift
 
         # --- HIGHLIGHTS (recover bright areas) ---
@@ -587,7 +604,7 @@ class BulletproofProcessor:
         # Affect pixels below L=90, lift proportionally
         sh_thresh = 90.0
         sh_mask = np.clip((sh_thresh - l) / sh_thresh, 0, 1)
-        sh_lift = (self.settings.shadows / 100.0) * 30.0  # +60 → +18
+        sh_lift = (self.settings.shadows / 100.0) * 30.0 * min(adaptive_scale, 1.8)  # +60 → +18, capped scale for shadows
         l = l + sh_mask * sh_lift
 
         # --- WHITES (extend white point) ---
