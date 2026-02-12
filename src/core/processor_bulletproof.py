@@ -245,14 +245,19 @@ class BulletproofProcessor:
         """
         Detect blown-out window regions in interior photos.
 
-        Looks for bright rectangular areas (>200 gray or >245 in any channel)
-        with reasonable aspect ratios and minimum size.
+        Filters out false positives (white ceilings, walls, floors) using:
+        1. Brightness threshold (>210 gray or >245 any channel)
+        2. Size bounds (0.5% - 25% of image)
+        3. Aspect ratio (0.3 - 4.0)
+        4. Ceiling/floor exclusion (wide bright bands at top/bottom of frame)
+        5. Edge contrast (real windows have dark frames, ceilings don't)
+
         Returns a feathered mask for smooth blending.
         """
         h, w = gray.shape
 
-        # Bright areas
-        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+        # Bright areas (210 threshold, raised from 200 to reduce wall false positives)
+        _, bright_mask = cv2.threshold(gray, 210, 255, cv2.THRESH_BINARY)
 
         # Blown-out areas (near 255 in any channel)
         max_channel = np.max(image, axis=2)
@@ -265,22 +270,57 @@ class BulletproofProcessor:
         combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel)
         combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel)
 
-        # Filter contours by size and aspect ratio
-        contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+        # Filter contours
+        contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL,
+                                        cv2.CHAIN_APPROX_SIMPLE)
 
         window_mask = np.zeros_like(gray)
-        min_area = h * w * 0.005  # At least 0.5% of image
+        min_area = h * w * 0.005   # At least 0.5% of image
+        max_area = h * w * 0.25    # No more than 25% (too big = ceiling/sky)
+        ceiling_y = int(h * 0.12)  # Top 12% of frame
+        floor_y = int(h * 0.88)    # Bottom 12% of frame
+        border_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (21, 21))
 
         for contour in contours:
             area = cv2.contourArea(contour)
-            if area < min_area:
+            if area < min_area or area > max_area:
                 continue
 
             x, y, cw, ch = cv2.boundingRect(contour)
             aspect = cw / (ch + 1e-6)
 
-            if 0.3 < aspect < 4.0:
-                cv2.drawContours(window_mask, [contour], -1, 255, -1)
+            if aspect < 0.3 or aspect > 4.0:
+                continue
+
+            # CEILING: wide bright band touching top of frame = ceiling, not window
+            if y < ceiling_y and cw > w * 0.4:
+                continue
+
+            # FLOOR: wide bright band touching bottom of frame = floor
+            if (y + ch) > floor_y and cw > w * 0.4:
+                continue
+
+            # EDGE CONTRAST: real windows have dark frames/surrounds.
+            # Compare brightness inside the contour vs a border ring just outside.
+            contour_fill = np.zeros_like(gray)
+            cv2.drawContours(contour_fill, [contour], -1, 255, -1)
+
+            dilated = cv2.dilate(contour_fill, border_kernel, iterations=1)
+            border_ring = cv2.bitwise_and(dilated, cv2.bitwise_not(contour_fill))
+
+            inner_brightness = float(np.mean(gray[contour_fill > 0]))
+            border_pixels = gray[border_ring > 0]
+
+            if len(border_pixels) > 0:
+                border_brightness = float(np.mean(border_pixels))
+                edge_contrast = inner_brightness - border_brightness
+
+                # Windows have dark frames creating >= 25 brightness difference.
+                # Ceilings/walls blend smoothly into surrounding bright areas.
+                if edge_contrast < 25:
+                    continue
+
+            cv2.drawContours(window_mask, [contour], -1, 255, -1)
 
         # Feather for smooth blending
         window_mask = cv2.GaussianBlur(window_mask, (31, 31), 0)
