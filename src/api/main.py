@@ -67,7 +67,7 @@ except ImportError as e:
     HAS_AI_PROCESSOR = False
     print(f"ℹ️  AI processor not available (install ai-requirements.txt for 90% quality)")
 
-# Bulletproof Processor v6.0 - Production-grade, zero grain
+# Bulletproof Processor v8.0 - Professional RE, Lightroom Calibrated
 try:
     from src.core.processor_bulletproof import BulletproofProcessor, BulletproofSettings, PROCESSOR_VERSION as BP_VERSION
     HAS_BULLETPROOF = True
@@ -1111,8 +1111,7 @@ async def process_images(
                         # Single image — run through standard processor
                         print(f"   🖼️  {group.scene_id}: single image → standard processing")
                         if HAS_BULLETPROOF:
-                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy',
-                                                       sharpen=False, brighten=True, brighten_amount=1.5)
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy')
                             proc = BulletproofProcessor(bp_s)
                         else:
                             raise HTTPException(500, "No processor available")
@@ -1127,8 +1126,7 @@ async def process_images(
                         print(f"   🔍 {group.scene_id}: {len(group.images)} duplicates → picking sharpest")
                         best = await asyncio.to_thread(pick_sharpest, group.images)
                         if HAS_BULLETPROOF:
-                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy',
-                                                       sharpen=False, brighten=True, brighten_amount=1.5)
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='heavy')
                             proc = BulletproofProcessor(bp_s)
                         else:
                             raise HTTPException(500, "No processor available")
@@ -1144,8 +1142,7 @@ async def process_images(
                         result = await asyncio.to_thread(merge_with_sharpness_weights, group.images)
                         # Post-process the merged result
                         if HAS_BULLETPROOF:
-                            bp_s = BulletproofSettings(preset='professional', denoise_strength='medium',
-                                                       sharpen=False, brighten=True, brighten_amount=1.2)
+                            bp_s = BulletproofSettings(preset='professional', denoise_strength='medium')
                             proc = BulletproofProcessor(bp_s)
                         else:
                             raise HTTPException(500, "No processor available")
@@ -1207,9 +1204,6 @@ async def process_images(
                 bp_settings = BulletproofSettings(
                     preset='professional',
                     denoise_strength='heavy',
-                    sharpen=False,
-                    brighten=True,
-                    brighten_amount=1.5,
                 )
                 processor = BulletproofProcessor(bp_settings)
                 proc_version = f"Bulletproof v{BP_VERSION}"
@@ -1261,9 +1255,6 @@ async def process_images(
             bp_settings = BulletproofSettings(
                 preset='professional',
                 denoise_strength='heavy',
-                sharpen=False,
-                brighten=True,
-                brighten_amount=1.5,
             )
             processor = BulletproofProcessor(bp_settings)
             proc_version = f"Bulletproof v{BP_VERSION}"

@@ -1,52 +1,79 @@
 """
-HDRit Bulletproof Processor v6.0
-================================
+HDRit Professional Processor v8.0
+==================================
 
-Production-grade processor based on AutoHDR architecture analysis.
+Production-grade real estate photo processor calibrated to
+professional Lightroom editing values from industry analysis.
 
-Key Principles:
-1. DENOISE FIRST - Clean input before any processing
-2. TILE-BASED - Handle any image size without memory issues
-3. CHANNEL-SPECIFIC - Aggressive chroma, gentle luma denoising
-4. NO NOISE AMPLIFICATION - Clean pipeline throughout
-5. PROFESSIONAL OUTPUT - Upscale, sharpen, brighten
+Pipeline:
+1. QUALITY UPSCALE - Ensure minimum professional resolution
+2. SCENE ANALYSIS - Detect noise, color temp, windows, brightness
+3. DENOISE - Adaptive bilateral (gentle luma, aggressive chroma)
+4. WHITE BALANCE - Scene-adaptive Shade of Gray
+5. HDR FUSION - Conservative synthetic brackets + Mertens
+6. WINDOW PULL - Detect and recover blown window areas
+7. TONE MAP - Single-pass Lightroom-calibrated (no stacking)
+8. COLOR - Conservative vibrance (+12%), minimal saturation (+5%)
+9. CLARITY - Local contrast on luminance
+10. SHARPEN - Luminance-only unsharp mask with edge masking
+11. OUTPUT GUARANTEE - Minimum resolution check
 
-Target: Crystal clear, zero grain, AutoHDR-quality output.
+Calibrated to:
+- Exposure +0.5 to +1.0
+- Highlights -50 to -90
+- Shadows +40 to +80
+- Clarity +15 to +25
+- Vibrance +4 to +20
+- Saturation 0 to +10
+- Sharpening Amount 40, Radius 1.0, Masking 30
 """
 
 import cv2
 import numpy as np
 from dataclasses import dataclass
 from typing import Optional, Literal, List, Tuple
-from pathlib import Path
 
-PROCESSOR_VERSION = "7.0.2"  # WOW FACTOR - Balanced contrast fix
+PROCESSOR_VERSION = "8.0.0"  # Professional RE - Lightroom Calibrated
 
 
 @dataclass
 class BulletproofSettings:
-    """Production settings for bulletproof processing."""
+    """Production settings calibrated to professional real estate editing."""
 
     # Quality preset
-    preset: Literal['natural', 'intense', 'professional'] = 'professional'
+    preset: Literal['natural', 'professional', 'vivid'] = 'professional'
 
-    # Denoising (medium = clean without over-smoothing)
+    # Denoise - adaptive based on detected noise, this sets the floor
     denoise_strength: Literal['light', 'medium', 'heavy', 'extreme'] = 'medium'
 
-    # HDR fusion
-    hdr_strength: float = 0.6  # 0-1, how much HDR effect
+    # HDR fusion strength (0-1, maps to 50-80% range)
+    hdr_strength: float = 0.65
 
-    # Output enhancement - WOW FACTOR
-    sharpen: bool = True  # Crisp, professional
-    sharpen_amount: float = 0.4  # Subtle but visible
-    clarity: bool = True  # Local contrast for depth
-    clarity_amount: float = 0.15  # Subtle clarity
-    brighten: bool = True
-    brighten_amount: float = 1.5  # Bright but not blown
+    # Lightroom-calibrated tone values (slider scale, same as LR)
+    exposure: float = 0.7          # LR +0.7 (range +0.5 to +1.0)
+    highlights: float = -70.0      # LR -70 (range -50 to -90)
+    shadows: float = 60.0          # LR +60 (range +40 to +80)
+    whites: float = 15.0           # LR +15 (range +10 to +25)
+    blacks: float = -25.0          # LR -25 (range -19 to -45)
+
+    # Clarity and color
+    clarity: float = 20.0          # LR +20 (range +15 to +25)
+    vibrance: float = 12.0         # LR +12 (range +4 to +20)
+    saturation: float = 5.0        # LR +5 (range 0 to +10)
+
+    # Sharpening (Lightroom values)
+    sharpen: bool = True
+    sharpen_amount: float = 40.0   # LR Amount 40
+    sharpen_radius: float = 1.0    # LR Radius 1.0
+    sharpen_masking: float = 30.0  # LR Masking 30
+
+    # Window pull (real estate specific)
+    window_pull: bool = True
+    window_pull_strength: float = 0.6
 
     # Upscaling
     upscale: bool = False
-    upscale_factor: float = 1.5  # 1.5x, 2x, etc.
+    upscale_factor: float = 1.5
 
     # Tile processing (for large images)
     tile_size: int = 1024
@@ -55,704 +82,704 @@ class BulletproofSettings:
 
 class BulletproofProcessor:
     """
-    Production-grade HDR processor.
+    Professional real estate photo processor v8.0.
 
-    Pipeline:
-    1. INPUT CLEANING - Heavy denoise to remove all grain
-    2. HDR FUSION - Mertens exposure fusion (clean, no artifacts)
-    3. TONE MAPPING - Professional tone curve
-    4. COLOR CORRECTION - White balance, vibrance
-    5. OUTPUT POLISH - Sharpen, brighten, upscale
+    Calibrated to match professional Lightroom editing workflows.
+    Single-pass tone mapping prevents the stacking artifacts of v7.
     """
 
     def __init__(self, settings: Optional[BulletproofSettings] = None):
         self.settings = settings or BulletproofSettings()
-        self.mertens = cv2.createMergeMertens()
+        self.mertens = cv2.createMergeMertens(
+            contrast_weight=1.0,
+            saturation_weight=1.0,
+            exposure_weight=0.0  # Prevent over-weighting of exposure
+        )
 
     def process(self, image: np.ndarray) -> np.ndarray:
-        """Process single image to AutoHDR quality."""
+        """Process single image to professional real estate quality."""
 
-        # =====================================================
-        # STAGE 0: SMART UPSCALE (v7.0.0 - quality guarantee)
-        # Upscale small images to ensure professional output
-        # =====================================================
-        h, w = image.shape[:2]
-        min_dimension = 2500  # Professional minimum (increased from 2000)
-        max_side = max(h, w)
+        # STAGE 0: Quality upscale
+        image = self._quality_upscale(image, min_dimension=2500)
 
-        if max_side < min_dimension:
-            scale = min_dimension / max_side
-            # Cap scale at 3x to avoid excessive upscaling
-            scale = min(scale, 3.0)
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            # Use INTER_LANCZOS4 for highest quality upscaling
-            image = cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-            print(f"   ↑ Quality upscale: {w}x{h} → {new_w}x{new_h} (Lanczos4)")
+        # STAGE 1: Scene analysis (used by later stages)
+        scene = self._analyze_scene(image)
 
-        # =====================================================
-        # STAGE 1: INPUT CLEANING (removes grain without over-smoothing)
-        # =====================================================
+        # STAGE 2: Denoise (TurboProcessor can override _deep_clean)
         clean = self._deep_clean(image)
 
-        # =====================================================
-        # STAGE 2: HDR FUSION (on clean input)
-        # =====================================================
-        hdr = self._hdr_fusion(clean)
+        # STAGE 3: White balance (scene-adaptive)
+        balanced = self._white_balance(clean, scene)
 
-        # =====================================================
-        # STAGE 3: TONE MAPPING & COLOR
-        # =====================================================
+        # STAGE 4: HDR fusion (synthetic brackets)
+        hdr = self._hdr_fusion(balanced)
+
+        # STAGE 5: Window pull (detect & recover blown areas)
+        if self.settings.window_pull:
+            hdr = self._window_pull(hdr, balanced, scene)
+
+        # STAGE 6: Tone map (single-pass, LR-calibrated)
         toned = self._tone_map(hdr)
-        colored = self._color_correct(toned)
 
-        # =====================================================
-        # STAGE 4: OUTPUT POLISH
-        # =====================================================
-        result = self._polish_output(colored)
+        # STAGE 7: Color (conservative vibrance + saturation)
+        colored = self._color_grade(toned)
 
-        # =====================================================
-        # STAGE 5: COOL WHITE BALANCE (v6.1.0 - Target Look)
-        # Target: neutral/cool (+1.5 to +2 warmth), not warm yellow
-        # =====================================================
-        result = self._apply_cool_wb(result)
+        # STAGE 8: Clarity (local contrast)
+        detailed = self._apply_clarity(colored)
 
-        # =====================================================
-        # STAGE 6: OUTPUT QUALITY GUARANTEE (v7.0.0)
-        # Ensure final output meets minimum professional standards
-        # =====================================================
-        final_h, final_w = result.shape[:2]
-        min_output = 2000  # Minimum output dimension
-        max_final = max(final_h, final_w)
+        # STAGE 9: Sharpen (luminance-only with masking)
+        if self.settings.sharpen:
+            detailed = self._sharpen(detailed)
 
-        if max_final < min_output:
-            scale = min_output / max_final
-            result = cv2.resize(result, (int(final_w * scale), int(final_h * scale)),
-                              interpolation=cv2.INTER_LANCZOS4)
-            print(f"   ✓ Output quality guarantee: {final_w}x{final_h} → {result.shape[1]}x{result.shape[0]}")
+        # STAGE 10: Output quality guarantee
+        result = self._quality_guarantee(detailed)
 
         return result
 
     def process_brackets(self, brackets: List[np.ndarray]) -> np.ndarray:
-        """Process brackets by using BRIGHTEST as single image through tuned pipeline."""
-        # Find the brightest bracket
-        brightness = [np.mean(img) for img in brackets]
-        brightest_idx = np.argmax(brightness)
-        brightest = brackets[brightest_idx]
-
-        # Process it through the SAME pipeline as single images (which we tuned to 99%)
-        return self.process(brightest)
-
-    def _bright_fusion(self, brackets: List[np.ndarray]) -> np.ndarray:
         """
-        BALANCED fusion for professional real estate output.
+        Process actual bracket exposures using Mertens fusion.
 
-        Target look: Balanced exposure, punchy contrast, vivid colors.
-        NOT overblown - the target has detail in walls.
-
-        Strategy:
-        1. Mertens fusion as base (balanced tones)
-        2. Lift shadows using bright bracket
-        3. Recover highlights using dark bracket
+        v8: Actually merges brackets (v7 just picked the brightest).
+        Uses the darkest bracket for window recovery.
         """
-        # Ensure same size
-        target_shape = brackets[0].shape[:2]
-        aligned = []
-        for b in brackets:
-            if b.shape[:2] != target_shape:
-                b = cv2.resize(b, (target_shape[1], target_shape[0]))
-            aligned.append(b)
+        if len(brackets) < 2:
+            return self.process(brackets[0])
 
-        # Sort by brightness
-        brightness = [np.mean(img) for img in aligned]
-        sorted_indices = np.argsort(brightness)
+        # Align brackets
+        aligned = self._align_brackets(brackets)
 
-        darkest = aligned[sorted_indices[0]].astype(np.float32)
-        brightest = aligned[sorted_indices[-1]].astype(np.float32)
+        # Mertens fusion
+        merged = self._mertens_fusion(aligned)
 
-        # MERTENS FUSION as base - gives balanced, professional exposure
-        mertens_fusion = self.mertens.process(aligned)
-        result = np.clip(mertens_fusion * 255, 0, 255).astype(np.float32)
+        # Scene analysis on merged result
+        scene = self._analyze_scene(merged)
 
-        # Get luminosity masks
-        result_gray = cv2.cvtColor(result.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
-        bright_gray = cv2.cvtColor(brightest.astype(np.uint8), cv2.COLOR_BGR2GRAY).astype(np.float32)
+        # Window pull using darkest bracket (real data, not synthetic)
+        if self.settings.window_pull:
+            brightnesses = [float(np.mean(b)) for b in aligned]
+            darkest = aligned[int(np.argmin(brightnesses))]
+            merged = self._window_pull_from_bracket(merged, darkest, scene)
 
-        # SHADOW LIFT: Where Mertens is dark (<100), blend in bright bracket
-        shadow_mask = np.clip((100 - result_gray) / 80, 0, 1)
-        shadow_mask = cv2.GaussianBlur(shadow_mask, (31, 31), 0)
-        shadow_mask = np.stack([shadow_mask] * 3, axis=-1)
+        # Tone + color pipeline (skip HDR fusion since we already merged)
+        balanced = self._white_balance(merged, scene)
+        toned = self._tone_map(balanced)
+        colored = self._color_grade(toned)
+        detailed = self._apply_clarity(colored)
+        if self.settings.sharpen:
+            detailed = self._sharpen(detailed)
+        result = self._quality_guarantee(detailed)
 
-        # Blend 40% of bright bracket into shadows
-        result = result * (1 - shadow_mask * 0.40) + brightest * shadow_mask * 0.40
-
-        # HIGHLIGHT RECOVERY: Where bright bracket is blown (>245), use dark
-        highlight_mask = np.clip((bright_gray - 245) / 10, 0, 1)
-        highlight_mask = cv2.GaussianBlur(highlight_mask, (21, 21), 0)
-        highlight_mask = np.stack([highlight_mask] * 3, axis=-1)
-
-        # Blend 50% of dark bracket into blown highlights
-        result = result * (1 - highlight_mask * 0.50) + darkest * highlight_mask * 0.50
-
-        return np.clip(result, 0, 255).astype(np.uint8)
+        return result
 
     # =========================================================================
-    # STAGE 1: DEEP CLEANING (The secret to grain-free output)
+    # SCENE ANALYSIS
+    # =========================================================================
+
+    def _analyze_scene(self, image: np.ndarray) -> dict:
+        """
+        Analyze scene to adapt processing parameters.
+
+        Returns:
+            noise_level: estimated noise (0-100)
+            color_temp: 'warm', 'neutral', or 'cool'
+            brightness: mean brightness (0-255)
+            dynamic_range: p99 - p1 of luminance
+            window_mask: feathered mask of blown window areas
+            is_interior: whether this appears to be an interior shot
+            warmth: R-B channel difference
+        """
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+
+        # Noise estimation from center patch
+        center = gray[h // 4:3 * h // 4, w // 4:3 * w // 4]
+        noise_level = self._estimate_noise(center)
+
+        # Brightness
+        mean_brightness = float(np.mean(gray))
+
+        # Dynamic range
+        p1 = float(np.percentile(gray, 1))
+        p99 = float(np.percentile(gray, 99))
+        dynamic_range = p99 - p1
+
+        # Color temperature
+        b_mean = float(np.mean(image[:, :, 0]))
+        r_mean = float(np.mean(image[:, :, 2]))
+        warmth = r_mean - b_mean
+        if warmth > 15:
+            color_temp = 'warm'
+        elif warmth < -5:
+            color_temp = 'cool'
+        else:
+            color_temp = 'neutral'
+
+        # Window detection
+        window_mask = self._detect_windows(image, gray)
+
+        # Interior detection
+        window_fraction = np.sum(window_mask > 0) / (h * w)
+        is_interior = window_fraction > 0.02
+
+        return {
+            'noise_level': noise_level,
+            'color_temp': color_temp,
+            'brightness': mean_brightness,
+            'dynamic_range': dynamic_range,
+            'window_mask': window_mask,
+            'is_interior': is_interior,
+            'warmth': warmth,
+        }
+
+    def _estimate_noise(self, gray_patch: np.ndarray) -> float:
+        """
+        Estimate noise using median absolute deviation of Laplacian.
+        Returns 0-100 scale.
+        """
+        laplacian = cv2.Laplacian(gray_patch, cv2.CV_64F)
+        sigma = float(np.median(np.abs(laplacian))) / 0.6745
+        return min(sigma, 100.0)
+
+    def _detect_windows(self, image: np.ndarray, gray: np.ndarray) -> np.ndarray:
+        """
+        Detect blown-out window regions in interior photos.
+
+        Looks for bright rectangular areas (>200 gray or >245 in any channel)
+        with reasonable aspect ratios and minimum size.
+        Returns a feathered mask for smooth blending.
+        """
+        h, w = gray.shape
+
+        # Bright areas
+        _, bright_mask = cv2.threshold(gray, 200, 255, cv2.THRESH_BINARY)
+
+        # Blown-out areas (near 255 in any channel)
+        max_channel = np.max(image, axis=2)
+        _, blown_mask = cv2.threshold(max_channel, 245, 255, cv2.THRESH_BINARY)
+
+        combined = cv2.bitwise_or(bright_mask, blown_mask)
+
+        # Clean up morphologically
+        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
+        combined = cv2.morphologyEx(combined, cv2.MORPH_CLOSE, kernel)
+        combined = cv2.morphologyEx(combined, cv2.MORPH_OPEN, kernel)
+
+        # Filter contours by size and aspect ratio
+        contours, _ = cv2.findContours(combined, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+        window_mask = np.zeros_like(gray)
+        min_area = h * w * 0.005  # At least 0.5% of image
+
+        for contour in contours:
+            area = cv2.contourArea(contour)
+            if area < min_area:
+                continue
+
+            x, y, cw, ch = cv2.boundingRect(contour)
+            aspect = cw / (ch + 1e-6)
+
+            if 0.3 < aspect < 4.0:
+                cv2.drawContours(window_mask, [contour], -1, 255, -1)
+
+        # Feather for smooth blending
+        window_mask = cv2.GaussianBlur(window_mask, (31, 31), 0)
+
+        return window_mask
+
+    # =========================================================================
+    # DENOISE
     # =========================================================================
 
     def _deep_clean(self, image: np.ndarray) -> np.ndarray:
         """
-        Multi-pass denoising for crystal clear input.
+        Adaptive denoising based on detected noise level.
 
-        Strategy:
-        1. Convert to YCrCb (separate luma from chroma)
-        2. HEAVY chroma denoising (eyes less sensitive to color noise)
-        3. MODERATE luma denoising (preserve detail)
-        4. Additional smoothing passes
-        5. Final bilateral for edge preservation
+        Uses bilateral filter chain (fast) in YCrCb space:
+        - Gentle on luminance (preserve detail)
+        - Aggressive on chroma (eyes less sensitive to color noise)
+
+        TurboProcessor overrides this method for even faster processing.
         """
-        strength = self.settings.denoise_strength
+        # Estimate noise from center of image
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+        h, w = gray.shape
+        center = gray[h // 4:3 * h // 4, w // 4:3 * w // 4]
+        noise = self._estimate_noise(center)
 
-        # Strength parameters - BALANCED for clean yet detailed
-        params = {
-            'light':   {'luma_h': 6,  'chroma_h': 15, 'passes': 1},
-            'medium':  {'luma_h': 8,  'chroma_h': 20, 'passes': 1},
-            'heavy':   {'luma_h': 10, 'chroma_h': 25, 'passes': 2},
-            'extreme': {'luma_h': 12, 'chroma_h': 30, 'passes': 2},  # Backed off
-        }
-        p = params[strength]
+        # Adapt filter parameters to actual noise level
+        if noise < 5:
+            d, sigma_c, sigma_s, passes = 5, 25, 25, 1
+        elif noise < 15:
+            d, sigma_c, sigma_s, passes = 5, 35, 35, 1
+        elif noise < 30:
+            d, sigma_c, sigma_s, passes = 7, 50, 50, 1
+        else:
+            d, sigma_c, sigma_s, passes = 9, 65, 65, 2
 
-        # Convert to YCrCb
+        # Apply settings multiplier
+        strength_mult = {'light': 0.7, 'medium': 1.0, 'heavy': 1.3, 'extreme': 1.6}
+        mult = strength_mult.get(self.settings.denoise_strength, 1.0)
+        sigma_c = int(sigma_c * mult)
+        sigma_s = int(sigma_s * mult)
+
+        # Work in YCrCb for channel-specific processing
         ycrcb = cv2.cvtColor(image, cv2.COLOR_BGR2YCrCb)
         y, cr, cb = cv2.split(ycrcb)
 
-        # ===== LUMINANCE CLEANING =====
-        # Multiple passes for thorough cleaning
-        y_clean = y.copy()
-        for _ in range(p['passes']):
-            y_clean = cv2.fastNlMeansDenoising(y_clean, None, p['luma_h'], 7, 21)
+        # Luminance: gentle (preserve detail)
+        for _ in range(passes):
+            y = cv2.bilateralFilter(y, d, int(sigma_c * 0.5), sigma_s)
 
-        # ===== CHROMA CLEANING (AGGRESSIVE) =====
-        # Color noise is less visible - be aggressive
-        cr_clean = cr.copy()
-        cb_clean = cb.copy()
+        # Chroma: aggressive (color noise is less visible)
+        for _ in range(passes):
+            cr = cv2.bilateralFilter(cr, d, sigma_c, sigma_s)
+            cb = cv2.bilateralFilter(cb, d, sigma_c, sigma_s)
 
-        for _ in range(p['passes']):
-            cr_clean = cv2.fastNlMeansDenoising(cr_clean, None, p['chroma_h'], 7, 21)
-            cb_clean = cv2.fastNlMeansDenoising(cb_clean, None, p['chroma_h'], 7, 21)
+        ycrcb = cv2.merge([y, cr, cb])
+        return cv2.cvtColor(ycrcb, cv2.COLOR_YCrCb2BGR)
 
-        # Extra bilateral smoothing on chroma
-        cr_clean = cv2.bilateralFilter(cr_clean, 15, 100, 100)
-        cb_clean = cv2.bilateralFilter(cb_clean, 15, 100, 100)
+    # =========================================================================
+    # WHITE BALANCE
+    # =========================================================================
 
-        # Merge back
-        ycrcb_clean = cv2.merge([y_clean, cr_clean, cb_clean])
-        result = cv2.cvtColor(ycrcb_clean, cv2.COLOR_YCrCb2BGR)
+    def _white_balance(self, image: np.ndarray, scene: dict) -> np.ndarray:
+        """
+        Scene-adaptive white balance.
 
-        # LIGHT final bilateral - preserve edges and detail
-        result = cv2.bilateralFilter(result, 7, 50, 50)
+        Base: Shade of Gray (p=6, optimal for RE).
+        Then adapts based on scene:
+        - Warm interiors: gentle cooling to neutralize
+        - Cool scenes: slight warming
+        - Neutral: no extra adjustment
+
+        Unlike v7 which forced a fixed cool WB on everything.
+        """
+        result = self._shade_of_gray_wb(image, p=6)
+
+        warmth = scene['warmth']
+        is_interior = scene['is_interior']
+
+        if is_interior and warmth > 20:
+            # Warm interior (tungsten/incandescent) - cool it gently
+            cool_shift = min((warmth - 10) * 0.15, 8.0)
+            b, g, r = cv2.split(result.astype(np.float32))
+            r = np.clip(r - cool_shift, 0, 255)
+            b = np.clip(b + cool_shift * 0.5, 0, 255)
+            result = cv2.merge([b, g, r]).astype(np.uint8)
+
+        elif warmth < -10:
+            # Too cool - warm slightly
+            warm_shift = min(abs(warmth) * 0.1, 5.0)
+            b, g, r = cv2.split(result.astype(np.float32))
+            r = np.clip(r + warm_shift, 0, 255)
+            b = np.clip(b - warm_shift * 0.5, 0, 255)
+            result = cv2.merge([b, g, r]).astype(np.uint8)
 
         return result
-
-    # =========================================================================
-    # STAGE 2: HDR FUSION
-    # =========================================================================
-
-    def _hdr_fusion(self, image: np.ndarray) -> np.ndarray:
-        """
-        Create HDR effect from single clean image.
-        Uses synthetic brackets + Mertens fusion.
-        """
-        # Create synthetic brackets from clean input
-        brackets = self._create_brackets(image)
-
-        # Mertens exposure fusion
-        return self._mertens_fusion(brackets)
-
-    def _create_brackets(self, image: np.ndarray) -> List[np.ndarray]:
-        """Create exposure brackets from single image."""
-        img_float = image.astype(np.float32) / 255.0
-
-        # Under-exposed (highlight detail)
-        under = np.clip(img_float * 0.5, 0, 1)
-
-        # Normal
-        normal = img_float
-
-        # Over-exposed (shadow detail) - use gamma for natural lift
-        over = np.power(np.clip(img_float, 0.001, 1), 0.45)
-        over = np.clip(over * 1.2, 0, 1)
-
-        brackets = [
-            (under * 255).astype(np.uint8),
-            (normal * 255).astype(np.uint8),
-            (over * 255).astype(np.uint8)
-        ]
-
-        return brackets
-
-    def _mertens_fusion(self, brackets: List[np.ndarray]) -> np.ndarray:
-        """Mertens exposure fusion - the AutoHDR secret."""
-        # Ensure same size
-        target_shape = brackets[0].shape[:2]
-        aligned = []
-        for b in brackets:
-            if b.shape[:2] != target_shape:
-                b = cv2.resize(b, (target_shape[1], target_shape[0]))
-            aligned.append(b)
-
-        # Mertens fusion
-        fusion = self.mertens.process(aligned)
-
-        # Blend with original based on strength
-        strength = self.settings.hdr_strength
-        original = aligned[1].astype(np.float32) / 255.0
-        result = original * (1 - strength) + fusion * strength
-
-        return np.clip(result * 255, 0, 255).astype(np.uint8)
-
-    # =========================================================================
-    # STAGE 3: TONE MAPPING & COLOR
-    # =========================================================================
-
-    def _tone_map(self, image: np.ndarray) -> np.ndarray:
-        """
-        v7.0.0: WOW FACTOR tone mapping.
-        Elon Musk approach: 10x better than competition.
-
-        Goals:
-        - MASSIVE shadow lift (no dark areas)
-        - PUNCHY S-curve contrast
-        - BRIGHT overall (magazine quality)
-        """
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l = lab[:, :, 0].astype(np.float32)
-
-        # =====================================================
-        # STEP 1: AGGRESSIVE SHADOW LIFT
-        # Kill all shadows - make everything bright and visible
-        # =====================================================
-        shadow_mask = np.clip((100 - l) / 100, 0, 1)  # Stronger below 100
-        shadow_lift = shadow_mask * 60  # MASSIVE lift
-        l = l + shadow_lift
-
-        # Extra boost for deep shadows
-        deep_shadow_mask = np.clip((50 - l) / 50, 0, 1)
-        l = l + deep_shadow_mask * 30
-
-        # =====================================================
-        # STEP 2: S-CURVE FOR PUNCH
-        # Professional contrast that pops
-        # =====================================================
-        l_norm = l / 255.0
-
-        # Balanced S-curve - punchy but natural
-        midpoint = 0.45  # Slightly lower midpoint = brighter overall
-        steepness = 2.5  # Balanced curve (was 3.5 - too harsh)
-        curved = 1 / (1 + np.exp(-steepness * (l_norm - midpoint)))
-        curved = (curved - curved.min()) / (curved.max() - curved.min() + 1e-6)
-
-        # Blend 30% S-curve for natural contrast
-        l_norm = l_norm * 0.7 + curved * 0.3
-
-        # =====================================================
-        # STEP 3: BRIGHTNESS BOOST
-        # Target: bright, magazine-quality output
-        # =====================================================
-        l_norm = l_norm * 1.15 + 0.05  # 15% brighter + offset
-
-        # =====================================================
-        # STEP 4: CONTRAST POP
-        # Punch up the contrast for wow factor
-        # =====================================================
-        l_norm = (l_norm - 0.5) * 1.08 + 0.5  # 8% contrast (was 20% - too harsh)
-
-        lab[:, :, 0] = np.clip(l_norm * 255, 0, 255).astype(np.uint8)
-        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-    def _color_correct(self, image: np.ndarray) -> np.ndarray:
-        """
-        v7.0.0: WOW FACTOR color correction.
-        Colors that POP and make users say "holy shit".
-        """
-        # Auto white balance
-        result = self._auto_white_balance(image)
-
-        # =====================================================
-        # VIBRANCE: Make colors POP (not oversaturated)
-        # Vibrance boosts muted colors, leaves saturated alone
-        # =====================================================
-        result = self._apply_vibrance(result, 1.45)  # Strong vibrance
-
-        # =====================================================
-        # SELECTIVE COLOR BOOST
-        # Make specific colors pop: blues, greens, warm tones
-        # =====================================================
-        result = self._boost_colors_selective(result)
-
-        return result
-
-    def _boost_colors_selective(self, image: np.ndarray) -> np.ndarray:
-        """
-        Selectively boost colors for WOW factor.
-        - Blues: +25% saturation (sky, equipment)
-        - Oranges/Reds: +15% (skin tones, warm objects)
-        - Greens: +20% (plants, outdoor)
-        """
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-        h, s, v = cv2.split(hsv)
-
-        # Blue range (100-130 in OpenCV HSV)
-        blue_mask = ((h >= 100) & (h <= 130)).astype(np.float32)
-        s = s + blue_mask * s * 0.25  # +25% saturation for blues
-
-        # Orange/Red range (0-20 and 160-180)
-        warm_mask = (((h >= 0) & (h <= 20)) | ((h >= 160) & (h <= 180))).astype(np.float32)
-        s = s + warm_mask * s * 0.15  # +15% for warm tones
-
-        # Green range (35-85)
-        green_mask = ((h >= 35) & (h <= 85)).astype(np.float32)
-        s = s + green_mask * s * 0.20  # +20% for greens
-
-        # Also slightly boost value for these colors (makes them pop more)
-        v = v + blue_mask * 10
-        v = v + green_mask * 8
-
-        hsv = cv2.merge([h, np.clip(s, 0, 255), np.clip(v, 0, 255)])
-        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-
-    def _auto_white_balance_cool(self, image: np.ndarray) -> np.ndarray:
-        """White balance with slight cool bias for clean real estate look."""
-        result = image.astype(np.float32)
-
-        avg_b = np.mean(result[:, :, 0])
-        avg_g = np.mean(result[:, :, 1])
-        avg_r = np.mean(result[:, :, 2])
-        avg_gray = (avg_b + avg_g + avg_r) / 3
-
-        # Scale factors with COOL bias (slightly boost blue, reduce red)
-        scale_b = np.clip(avg_gray / (avg_b + 1e-6) * 1.05, 0.8, 1.4)  # Boost blue
-        scale_g = np.clip(avg_gray / (avg_g + 1e-6), 0.8, 1.4)
-        scale_r = np.clip(avg_gray / (avg_r + 1e-6) * 0.97, 0.7, 1.3)  # Reduce red
-
-        strength = 0.6
-        result[:, :, 0] *= 1 + (scale_b - 1) * strength
-        result[:, :, 1] *= 1 + (scale_g - 1) * strength
-        result[:, :, 2] *= 1 + (scale_r - 1) * strength
-
-        return np.clip(result, 0, 255).astype(np.uint8)
-
-    def _boost_blues(self, image: np.ndarray) -> np.ndarray:
-        """Boost blue saturation for vivid real estate look - matches target."""
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
-
-        h, s, v = cv2.split(hsv)
-
-        # Blue hue range: roughly 85-140 in OpenCV HSV (covers cyan to blue)
-        blue_mask = ((h >= 85) & (h <= 140)).astype(np.float32)
-
-        # Boost saturation in blue areas by 80% - target has EXTREMELY vivid blues
-        s = np.where(blue_mask > 0, np.minimum(s * 1.80, 255), s)
-
-        # Boost value for brighter, punchier blues
-        v = np.where(blue_mask > 0, np.minimum(v * 1.08, 255), v)
-
-        # Also boost greens slightly (plants in target are vivid)
-        green_mask = ((h >= 35) & (h <= 85)).astype(np.float32)
-        s = np.where(green_mask > 0, np.minimum(s * 1.25, 255), s)
-
-        hsv = cv2.merge([h, s, v])
-        return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
-
-    def _darken_screens(self, image: np.ndarray) -> np.ndarray:
-        """
-        Darken computer monitors and TV screens.
-        Professional RE photos have dark/black screens.
-
-        Detection: Look for rectangular dark-ish areas with uniform color.
-        """
-        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-
-        # Screens typically have moderate brightness and low saturation
-        hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
-
-        # Find areas that are:
-        # - Moderate brightness (80-200)
-        # - Low saturation (<50) - screens are usually grayish
-        # - Relatively uniform
-        low_sat_mask = hsv[:, :, 1] < 50
-        mid_bright_mask = (gray > 60) & (gray < 180)
-
-        # Combined screen candidate mask
-        screen_mask = (low_sat_mask & mid_bright_mask).astype(np.uint8) * 255
-
-        # Clean up mask - screens are usually rectangular blobs
-        kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (15, 15))
-        screen_mask = cv2.morphologyEx(screen_mask, cv2.MORPH_CLOSE, kernel)
-        screen_mask = cv2.morphologyEx(screen_mask, cv2.MORPH_OPEN, kernel)
-
-        # Find contours and filter by size/aspect ratio
-        contours, _ = cv2.findContours(screen_mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-
-        final_mask = np.zeros_like(gray, dtype=np.float32)
-
-        for contour in contours:
-            area = cv2.contourArea(contour)
-            if area < 5000:  # Too small to be a screen
-                continue
-
-            # Get bounding rect
-            x, y, w, h = cv2.boundingRect(contour)
-            aspect_ratio = w / (h + 1e-6)
-
-            # Screens typically have aspect ratio between 0.5 and 2.5 (landscape or portrait)
-            if 0.4 < aspect_ratio < 2.5:
-                # This looks like a screen - add to mask
-                cv2.drawContours(final_mask, [contour], -1, 1.0, -1)
-
-        # Feather the mask
-        final_mask = cv2.GaussianBlur(final_mask, (21, 21), 0)
-        final_mask = np.stack([final_mask] * 3, axis=-1)
-
-        # Darken detected screens
-        result = image.astype(np.float32)
-        darkened = result * 0.3  # Make screens 30% brightness (quite dark)
-
-        result = result * (1 - final_mask) + darkened * final_mask
-
-        return np.clip(result, 0, 255).astype(np.uint8)
-
-    def _auto_white_balance(self, image: np.ndarray) -> np.ndarray:
-        """
-        Hybrid white balance using Shade of Gray algorithm.
-        Better than pure gray world - based on ML research (2024).
-        """
-        return self._shade_of_gray_wb(image, p=6)
 
     def _shade_of_gray_wb(self, image: np.ndarray, p: int = 6) -> np.ndarray:
         """
-        Shade of Gray white balance (from ML WB research).
-        Generalization of gray world with Minkowski norm parameter p.
-        p=1: Gray World, p=inf: Max-RGB, p=6: Optimal for real estate.
+        Shade of Gray white balance (Minkowski norm p=6).
+        Generalization of gray world - optimal for real estate at p=6.
         """
         result = image.astype(np.float32)
         b, g, r = cv2.split(result)
 
-        # Minkowski norm for each channel
-        b_power = np.power(b + 1e-6, p).mean() ** (1/p)
-        g_power = np.power(g + 1e-6, p).mean() ** (1/p)
-        r_power = np.power(r + 1e-6, p).mean() ** (1/p)
+        b_power = np.power(b + 1e-6, p).mean() ** (1 / p)
+        g_power = np.power(g + 1e-6, p).mean() ** (1 / p)
+        r_power = np.power(r + 1e-6, p).mean() ** (1 / p)
 
-        # Target gray
         avg = (b_power + g_power + r_power) / 3
 
-        # Scale factors
-        scale_b = np.clip(avg / (b_power + 1e-6), 0.7, 1.5)
-        scale_g = np.clip(avg / (g_power + 1e-6), 0.7, 1.5)
-        scale_r = np.clip(avg / (r_power + 1e-6), 0.7, 1.5)
+        scale_b = np.clip(avg / (b_power + 1e-6), 0.75, 1.4)
+        scale_g = np.clip(avg / (g_power + 1e-6), 0.75, 1.4)
+        scale_r = np.clip(avg / (r_power + 1e-6), 0.75, 1.4)
 
-        # Apply with moderate strength (0.6 optimal for RE)
-        strength = 0.6
+        # Apply at 55% strength (natural, not over-corrected)
+        strength = 0.55
         result[:, :, 0] = b * (1 + (scale_b - 1) * strength)
         result[:, :, 1] = g * (1 + (scale_g - 1) * strength)
         result[:, :, 2] = r * (1 + (scale_r - 1) * strength)
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
-    def _white_patch_wb(self, image: np.ndarray, percentile: int = 99) -> np.ndarray:
+    # =========================================================================
+    # HDR FUSION
+    # =========================================================================
+
+    def _hdr_fusion(self, image: np.ndarray) -> np.ndarray:
         """
-        White Patch white balance (from ML WB research).
-        Assumes brightest region should be white.
+        Create HDR effect from single image using synthetic brackets.
+
+        v8: Conservative bracket ratios for natural results.
+        Under=0.65x (v7 was 0.5x, too dark), Over=gamma 0.55 (v7 was 0.45*1.2, too bright).
         """
-        result = image.astype(np.float32)
-        b, g, r = cv2.split(result)
+        brackets = self._create_synthetic_brackets(image)
 
-        b_max = np.percentile(b, percentile)
-        g_max = np.percentile(g, percentile)
-        r_max = np.percentile(r, percentile)
+        fusion = self.mertens.process(brackets)
+        fusion = np.clip(fusion * 255, 0, 255)
 
-        max_val = max(b_max, g_max, r_max)
-
-        result[:, :, 0] = b * (max_val / (b_max + 1e-6))
-        result[:, :, 1] = g * (max_val / (g_max + 1e-6))
-        result[:, :, 2] = r * (max_val / (r_max + 1e-6))
+        strength = self.settings.hdr_strength
+        original = image.astype(np.float32)
+        result = original * (1 - strength) + fusion * strength
 
         return np.clip(result, 0, 255).astype(np.uint8)
 
-    def _gray_world_wb(self, image: np.ndarray) -> np.ndarray:
-        """Classic Gray World white balance (baseline)."""
-        result = image.astype(np.float32)
+    def _create_synthetic_brackets(self, image: np.ndarray) -> List[np.ndarray]:
+        """
+        Create synthetic exposure brackets from a single image.
+        Conservative ratios for natural-looking HDR.
+        """
+        img_f = image.astype(np.float32) / 255.0
 
-        avg_b = np.mean(result[:, :, 0])
-        avg_g = np.mean(result[:, :, 1])
-        avg_r = np.mean(result[:, :, 2])
-        avg_gray = (avg_b + avg_g + avg_r) / 3
+        # Under-exposed (highlight detail recovery)
+        under = np.clip(img_f * 0.65, 0, 1)
 
-        scale_b = np.clip(avg_gray / (avg_b + 1e-6), 0.7, 1.4)
-        scale_g = np.clip(avg_gray / (avg_g + 1e-6), 0.7, 1.4)
-        scale_r = np.clip(avg_gray / (avg_r + 1e-6), 0.7, 1.4)
+        # Normal
+        normal = img_f
 
-        strength = 0.5
-        result[:, :, 0] *= 1 + (scale_b - 1) * strength
-        result[:, :, 1] *= 1 + (scale_g - 1) * strength
-        result[:, :, 2] *= 1 + (scale_r - 1) * strength
+        # Over-exposed (shadow detail) - gentle gamma lift
+        over = np.power(np.clip(img_f, 0.001, 1), 0.55)
+        over = np.clip(over, 0, 1)
+
+        return [
+            (under * 255).astype(np.uint8),
+            (normal * 255).astype(np.uint8),
+            (over * 255).astype(np.uint8)
+        ]
+
+    # =========================================================================
+    # WINDOW PULL
+    # =========================================================================
+
+    def _window_pull(self, image: np.ndarray, original: np.ndarray,
+                     scene: dict) -> np.ndarray:
+        """
+        Recover detail in blown-out window areas (single image mode).
+
+        Creates a darkened version and blends it into detected window regions.
+        This is the #1 differentiator between AI and human RE editors.
+        """
+        window_mask = scene['window_mask']
+
+        if np.sum(window_mask) < 100:
+            return image
+
+        # Create darker version with lifted shadow detail
+        dark = (image.astype(np.float32) * 0.45)
+        dark_f = dark / 255.0
+        dark_f = np.power(np.clip(dark_f, 0.001, 1), 0.7)
+        dark = np.clip(dark_f * 255, 0, 255).astype(np.uint8)
+
+        # Feathered blend into window areas
+        mask_f = window_mask.astype(np.float32) / 255.0
+        mask_3ch = np.stack([mask_f] * 3, axis=-1)
+
+        strength = self.settings.window_pull_strength
+        result = image.astype(np.float32) * (1 - mask_3ch * strength) + \
+                 dark.astype(np.float32) * mask_3ch * strength
 
         return np.clip(result, 0, 255).astype(np.uint8)
+
+    def _window_pull_from_bracket(self, merged: np.ndarray,
+                                  dark_bracket: np.ndarray,
+                                  scene: dict) -> np.ndarray:
+        """
+        Window pull using actual dark bracket (better than synthetic).
+        Used when real exposure brackets are available.
+        """
+        window_mask = scene['window_mask']
+
+        if np.sum(window_mask) < 100:
+            return merged
+
+        if dark_bracket.shape[:2] != merged.shape[:2]:
+            dark_bracket = cv2.resize(dark_bracket,
+                                      (merged.shape[1], merged.shape[0]))
+
+        mask_f = window_mask.astype(np.float32) / 255.0
+        mask_3ch = np.stack([mask_f] * 3, axis=-1)
+
+        # Slightly less strength for real brackets (they have real data)
+        strength = self.settings.window_pull_strength * 0.8
+        result = merged.astype(np.float32) * (1 - mask_3ch * strength) + \
+                 dark_bracket.astype(np.float32) * mask_3ch * strength
+
+        return np.clip(result, 0, 255).astype(np.uint8)
+
+    # =========================================================================
+    # TONE MAPPING (Single-pass, Lightroom-calibrated)
+    # =========================================================================
+
+    def _tone_map(self, image: np.ndarray) -> np.ndarray:
+        """
+        Single-pass tone mapping calibrated to Lightroom slider values.
+
+        All adjustments happen in ONE pass on the L channel in LAB space.
+        This prevents the stacking artifacts from v7 which had:
+        shadow lift + deep shadow lift + S-curve + brightness*1.15 + contrast*1.08
+
+        Lightroom equivalents applied:
+        - Exposure +0.7: global L lift of ~17.5
+        - Highlights -70: pull top 30% down by ~21
+        - Shadows +60: lift bottom 35% by ~18
+        - Whites +15: extend white point by ~2.25
+        - Blacks -25: deepen black point by ~3.75
+        - Gentle S-curve (steepness 1.5, 15% blend)
+        """
+        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
+        l = lab[:, :, 0].astype(np.float32)
+
+        # --- EXPOSURE (global lift) ---
+        # LR +1.0 ≈ +25 in L, so +0.7 ≈ +17.5
+        exposure_lift = self.settings.exposure * 25.0
+        l = l + exposure_lift
+
+        # --- HIGHLIGHTS (recover bright areas) ---
+        # Affect pixels above L=170, pull down proportionally
+        hl_thresh = 170.0
+        hl_mask = np.clip((l - hl_thresh) / (255.0 - hl_thresh), 0, 1)
+        hl_pull = (self.settings.highlights / 100.0) * 30.0  # -70 → -21
+        l = l + hl_mask * hl_pull
+
+        # --- SHADOWS (lift dark areas) ---
+        # Affect pixels below L=90, lift proportionally
+        sh_thresh = 90.0
+        sh_mask = np.clip((sh_thresh - l) / sh_thresh, 0, 1)
+        sh_lift = (self.settings.shadows / 100.0) * 30.0  # +60 → +18
+        l = l + sh_mask * sh_lift
+
+        # --- WHITES (extend white point) ---
+        wh_thresh = 230.0
+        wh_mask = np.clip((l - wh_thresh) / (255.0 - wh_thresh + 1e-6), 0, 1)
+        wh_push = (self.settings.whites / 100.0) * 15.0  # +15 → +2.25
+        l = l + wh_mask * wh_push
+
+        # --- BLACKS (deepen black point) ---
+        bk_thresh = 30.0
+        bk_mask = np.clip((bk_thresh - l) / bk_thresh, 0, 1)
+        bk_pull = (self.settings.blacks / 100.0) * 15.0  # -25 → -3.75
+        l = l + bk_mask * bk_pull
+
+        # --- GENTLE S-CURVE (natural contrast) ---
+        # v7 used midpoint=0.45, steepness=2.5, 30% blend — too aggressive
+        l_norm = np.clip(l / 255.0, 0, 1)
+        midpoint = 0.5
+        steepness = 1.5
+        curved = 1.0 / (1.0 + np.exp(-steepness * (l_norm - midpoint)))
+        c_min, c_max = curved.min(), curved.max()
+        curved = (curved - c_min) / (c_max - c_min + 1e-6)
+
+        # Blend 15% curve with 85% direct
+        l_norm = l_norm * 0.85 + curved * 0.15
+
+        lab[:, :, 0] = np.clip(l_norm * 255, 0, 255).astype(np.uint8)
+        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    # =========================================================================
+    # COLOR GRADING
+    # =========================================================================
+
+    def _color_grade(self, image: np.ndarray) -> np.ndarray:
+        """
+        Conservative color grading calibrated to professional RE values.
+
+        Vibrance +12 (factor 1.12, not v7's 1.45)
+        Saturation +5 (factor 1.05, barely touched)
+        No aggressive selective color boosting.
+        """
+        # Vibrance (boost muted colors, protect saturated ones)
+        vibrance_factor = 1.0 + (self.settings.vibrance / 100.0)  # 1.12
+        result = self._apply_vibrance(image, vibrance_factor)
+
+        # Saturation (global, very gentle)
+        if self.settings.saturation > 0:
+            sat_factor = 1.0 + (self.settings.saturation / 100.0)  # 1.05
+            hsv = cv2.cvtColor(result, cv2.COLOR_BGR2HSV).astype(np.float32)
+            hsv[:, :, 1] = np.clip(hsv[:, :, 1] * sat_factor, 0, 255)
+            result = cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
+
+        return result
 
     def _apply_vibrance(self, image: np.ndarray, factor: float) -> np.ndarray:
-        """Smart vibrance - boosts muted colors more."""
+        """Smart vibrance - boosts muted colors more, protects saturated."""
         hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV).astype(np.float32)
 
-        # Boost less-saturated colors more
         sat = hsv[:, :, 1] / 255.0
-        boost = 1 + (factor - 1) * (1 - sat)  # Less boost for already saturated
-
+        boost = 1 + (factor - 1) * (1 - sat)
         hsv[:, :, 1] = np.clip(hsv[:, :, 1] * boost, 0, 255)
 
         return cv2.cvtColor(hsv.astype(np.uint8), cv2.COLOR_HSV2BGR)
 
     # =========================================================================
-    # STAGE 4: OUTPUT POLISH
+    # CLARITY (Local Contrast)
     # =========================================================================
 
-    def _polish_output(self, image: np.ndarray) -> np.ndarray:
+    def _apply_clarity(self, image: np.ndarray) -> np.ndarray:
         """
-        v7.0.0: WOW FACTOR final polish.
-        Crisp, bright, professional output that impresses.
+        Local contrast on luminance channel only.
+        LR Clarity +20 → amount 0.20 unsharp mask with large radius.
         """
-        result = image.copy()
+        amount = self.settings.clarity / 100.0
 
-        # Brighten first
-        if self.settings.brighten:
-            result = self._brighten(result, self.settings.brighten_amount)
-
-        # Add clarity (local contrast) for depth and definition
-        if self.settings.clarity:
-            result = self._add_clarity(result, self.settings.clarity_amount)
-
-        # Sharpen for crisp, professional look
-        if self.settings.sharpen:
-            result = self._sharpen(result, self.settings.sharpen_amount)
-
-        # Upscale (if requested)
-        if self.settings.upscale and self.settings.upscale_factor > 1.0:
-            result = self._upscale(result, self.settings.upscale_factor)
-
-        return result
-
-    def _sharpen(self, image: np.ndarray, amount: float) -> np.ndarray:
-        """
-        Professional sharpening using unsharp mask.
-        Amount 0.3-0.5 is subtle but visible.
-        """
-        # Gaussian blur for unsharp mask
-        blurred = cv2.GaussianBlur(image, (0, 0), sigmaX=1.5)
-
-        # Unsharp mask: original + (original - blurred) * amount
-        sharpened = cv2.addWeighted(image, 1 + amount, blurred, -amount, 0)
-
-        return np.clip(sharpened, 0, 255).astype(np.uint8)
-
-    def _apply_cool_wb(self, image: np.ndarray) -> np.ndarray:
-        """
-        Apply cool/neutral white balance for target look (v6.1.0).
-
-        Target: +1.5 to +2 warmth (R-B difference) - nearly neutral, not warm.
-        This gives the bright, clean, professional real estate look.
-        """
-        # Split channels
-        b, g, r = cv2.split(image)
-
-        # Calculate current warmth
-        r_mean = np.mean(r.astype(np.float32))
-        b_mean = np.mean(b.astype(np.float32))
-        current_warmth = r_mean - b_mean
-
-        # Target warmth: +2 (neutral/cool)
-        target_warmth = 2.0
-        adjustment = target_warmth - current_warmth
-
-        # Only adjust if image is too warm (positive adjustment would cool it)
-        if adjustment < -1:  # Image is too warm, need to cool it
-            # Reduce red slightly, boost blue slightly
-            shift = int(abs(adjustment) * 0.3)  # Gentle adjustment
-            r_new = np.clip(r.astype(np.int16) - shift, 0, 255).astype(np.uint8)
-            b_new = np.clip(b.astype(np.int16) + shift // 2, 0, 255).astype(np.uint8)
-            return cv2.merge([b_new, g, r_new])
-
-        return image
-
-    def _soften(self, image: np.ndarray) -> np.ndarray:
-        """
-        Soften image slightly - target has smooth but detailed look.
-        Reduced softening to preserve more detail.
-        """
-        # Light Gaussian blur
-        softened = cv2.GaussianBlur(image, (0, 0), sigmaX=0.8)
-
-        # 35% soft, 65% original - preserve more detail
-        result = cv2.addWeighted(softened, 0.35, image, 0.65, 0)
-
-        return result
-
-    def _add_clarity(self, image: np.ndarray, amount: float) -> np.ndarray:
-        """
-        Add clarity (local contrast) - brings back definition lost in denoising.
-        """
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0].astype(np.float32)
+        l = lab[:, :, 0].astype(np.float32)
 
-        # Large radius unsharp mask = local contrast / clarity
-        blur = cv2.GaussianBlur(l_channel, (0, 0), sigmaX=25)
-        clarity = l_channel + (l_channel - blur) * amount
+        blur = cv2.GaussianBlur(l, (0, 0), sigmaX=25)
+        clarity = l + (l - blur) * amount
 
         lab[:, :, 0] = np.clip(clarity, 0, 255).astype(np.uint8)
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
 
-    def _brighten(self, image: np.ndarray, amount: float) -> np.ndarray:
-        """Brightness lift across entire image, more in shadows."""
+    # =========================================================================
+    # SHARPENING
+    # =========================================================================
+
+    def _sharpen(self, image: np.ndarray) -> np.ndarray:
+        """
+        Luminance-only sharpening with edge-aware masking.
+
+        LR Amount 40 → 0.40 unsharp mask
+        LR Radius 1.0 → sigma 1.0
+        LR Masking 30 → protect smooth areas (30th percentile threshold)
+
+        Applied to L channel only to prevent color fringing.
+        """
         lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0].astype(np.float32)
+        l = lab[:, :, 0].astype(np.float32)
 
-        # Global lift
-        global_lift = amount * 20
+        amount = self.settings.sharpen_amount / 100.0
+        radius = self.settings.sharpen_radius
 
-        # Extra lift in shadows
-        shadow_mask = 1.0 - np.clip(l_channel / 180, 0, 1)
-        shadow_lift = shadow_mask * amount * 25
+        blur = cv2.GaussianBlur(l, (0, 0), sigmaX=radius)
+        detail = l - blur
 
-        l_channel = np.clip(l_channel + global_lift + shadow_lift, 0, 255)
-        lab[:, :, 0] = l_channel.astype(np.uint8)
-
-        return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
-
-    def _upscale(self, image: np.ndarray, factor: float) -> np.ndarray:
-        """High-quality upscaling using Lanczos."""
-        h, w = image.shape[:2]
-        new_h = int(h * factor)
-        new_w = int(w * factor)
-
-        # Lanczos for best quality
-        return cv2.resize(image, (new_w, new_h), interpolation=cv2.INTER_LANCZOS4)
-
-    def _sharpen(self, image: np.ndarray, amount: float) -> np.ndarray:
-        """Simple, subtle unsharp mask on luminance."""
-        lab = cv2.cvtColor(image, cv2.COLOR_BGR2LAB)
-        l_channel = lab[:, :, 0].astype(np.float32)
-
-        blur = cv2.GaussianBlur(l_channel, (0, 0), sigmaX=1.5)
-        sharpened = l_channel + (l_channel - blur) * amount
+        # Edge-aware masking: only sharpen where there's significant detail
+        if self.settings.sharpen_masking > 0:
+            masking = self.settings.sharpen_masking / 100.0
+            edge_strength = np.abs(detail)
+            threshold = np.percentile(edge_strength, masking * 100)
+            edge_max = np.max(edge_strength)
+            mask = np.clip(
+                (edge_strength - threshold) / (edge_max - threshold + 1e-6),
+                0, 1
+            )
+            sharpened = l + detail * amount * mask
+        else:
+            sharpened = l + detail * amount
 
         lab[:, :, 0] = np.clip(sharpened, 0, 255).astype(np.uint8)
         return cv2.cvtColor(lab, cv2.COLOR_LAB2BGR)
+
+    # =========================================================================
+    # UTILITY METHODS
+    # =========================================================================
+
+    def _quality_upscale(self, image: np.ndarray,
+                         min_dimension: int = 2500) -> np.ndarray:
+        """Upscale small images to professional resolution."""
+        h, w = image.shape[:2]
+        max_side = max(h, w)
+
+        if max_side < min_dimension:
+            scale = min(min_dimension / max_side, 3.0)
+            new_w, new_h = int(w * scale), int(h * scale)
+            image = cv2.resize(image, (new_w, new_h),
+                               interpolation=cv2.INTER_LANCZOS4)
+            print(f"   ↑ Quality upscale: {w}x{h} → {new_w}x{new_h}")
+
+        return image
+
+    def _quality_guarantee(self, image: np.ndarray,
+                           min_output: int = 2000) -> np.ndarray:
+        """Ensure final output meets minimum professional resolution."""
+        h, w = image.shape[:2]
+        max_side = max(h, w)
+
+        if max_side < min_output:
+            scale = min_output / max_side
+            image = cv2.resize(image, (int(w * scale), int(h * scale)),
+                               interpolation=cv2.INTER_LANCZOS4)
+
+        return image
+
+    def _align_brackets(self, brackets: List[np.ndarray]) -> List[np.ndarray]:
+        """Align bracket images using MTB (fast, good for exposure brackets)."""
+        if len(brackets) < 2:
+            return brackets
+
+        target_shape = brackets[0].shape[:2]
+        aligned = []
+        for b in brackets:
+            if b.shape[:2] != target_shape:
+                b = cv2.resize(b, (target_shape[1], target_shape[0]))
+            aligned.append(b)
+
+        try:
+            align_mtb = cv2.createAlignMTB()
+            align_mtb.process(aligned, aligned)
+        except Exception:
+            pass
+
+        return aligned
+
+    def _mertens_fusion(self, brackets: List[np.ndarray]) -> np.ndarray:
+        """Mertens exposure fusion for actual brackets."""
+        fusion = self.mertens.process(brackets)
+        return np.clip(fusion * 255, 0, 255).astype(np.uint8)
+
+    def _bright_fusion(self, brackets: List[np.ndarray]) -> np.ndarray:
+        """
+        Enhanced bracket fusion with shadow lift and highlight recovery.
+        Maintained for compatibility with external code paths.
+        """
+        target_shape = brackets[0].shape[:2]
+        aligned = []
+        for b in brackets:
+            if b.shape[:2] != target_shape:
+                b = cv2.resize(b, (target_shape[1], target_shape[0]))
+            aligned.append(b)
+
+        brightness = [float(np.mean(img)) for img in aligned]
+        sorted_indices = np.argsort(brightness)
+
+        darkest = aligned[sorted_indices[0]].astype(np.float32)
+        brightest = aligned[sorted_indices[-1]].astype(np.float32)
+
+        mertens_result = self.mertens.process(aligned)
+        result = np.clip(mertens_result * 255, 0, 255).astype(np.float32)
+
+        # Shadow lift from bright bracket
+        result_gray = cv2.cvtColor(
+            result.astype(np.uint8), cv2.COLOR_BGR2GRAY
+        ).astype(np.float32)
+        shadow_mask = np.clip((100 - result_gray) / 80, 0, 1)
+        shadow_mask = cv2.GaussianBlur(shadow_mask, (31, 31), 0)
+        shadow_mask = np.stack([shadow_mask] * 3, axis=-1)
+        result = result * (1 - shadow_mask * 0.35) + \
+                 brightest * shadow_mask * 0.35
+
+        # Highlight recovery from dark bracket
+        bright_gray = cv2.cvtColor(
+            brightest.astype(np.uint8), cv2.COLOR_BGR2GRAY
+        ).astype(np.float32)
+        highlight_mask = np.clip((bright_gray - 240) / 15, 0, 1)
+        highlight_mask = cv2.GaussianBlur(highlight_mask, (21, 21), 0)
+        highlight_mask = np.stack([highlight_mask] * 3, axis=-1)
+        result = result * (1 - highlight_mask * 0.45) + \
+                 darkest * highlight_mask * 0.45
+
+        return np.clip(result, 0, 255).astype(np.uint8)
 
 
 # =============================================================================
 # CONVENIENCE FUNCTIONS
 # =============================================================================
 
-def process_bulletproof(image: np.ndarray, preset: str = 'professional') -> np.ndarray:
-    """Quick bulletproof processing."""
+def process_bulletproof(image: np.ndarray,
+                        preset: str = 'professional') -> np.ndarray:
+    """Quick professional processing."""
     settings = BulletproofSettings(preset=preset)
     processor = BulletproofProcessor(settings)
     return processor.process(image)

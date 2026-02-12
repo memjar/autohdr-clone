@@ -156,10 +156,8 @@ class SmartProcessor:
             denoise_strength='heavy',
             hdr_strength=0.6,
             sharpen=False,  # Keep soft like AutoHDR
-            clarity=profile.clarity_adjust > 0.3,
-            clarity_amount=profile.clarity_adjust * 0.5,
-            brighten=True,
-            brighten_amount=0.40 + profile.brightness_adjust * 0.2,
+            exposure=0.7 + profile.brightness_adjust * 0.3,
+            clarity=15.0 + profile.clarity_adjust * 10.0,
         )
 
     def _room_polish(
