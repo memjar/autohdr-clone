@@ -1,0 +1,11 @@
+respondent_id,brand,nps_score,satisfaction,age_group,region
+1,Tim Hortons,8,4.2,25-34,Ontario
+2,Starbucks,9,4.5,18-24,BC
+3,McDonald's,6,3.8,35-44,Alberta
+4,Tim Hortons,7,4.0,45-54,Quebec
+5,Starbucks,10,4.8,25-34,Ontario
+6,McDonald's,5,3.5,55-64,Manitoba
+7,Tim Hortons,9,4.6,18-24,BC
+8,Starbucks,8,4.3,35-44,Ontario
+9,McDonald's,7,3.9,25-34,Quebec
+10,Tim Hortons,8,4.1,45-54,Alberta

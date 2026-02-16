@@ -2,6 +2,467 @@
 @tailwind components;
 @tailwind utilities;
 
+/* ============================================
+   HDRit Mobile Optimization - 2026 Standards
+   Core Web Vitals: LCP < 2.5s, INP < 200ms, CLS <= 0.1
+   ============================================ */
+
+/* === BASE RESET & OPTIMIZATION === */
+html, body {
+  width: 100%;
+  max-width: 100vw;
+  min-height: 100%;
+  margin: 0;
+  padding: 0;
+}
+
+html {
+  overflow-x: hidden;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  min-height: 100%;
+  /* iOS momentum scrolling */
+  -webkit-overflow-scrolling: touch;
+}
+
 body {
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+body {
+  /* System fonts first for instant rendering (LCP optimization) */
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  /* Prevent horizontal overscroll only - keep vertical scrolling */
+  overscroll-behavior-x: none;
+  /* Optimize text rendering */
+  text-rendering: optimizeSpeed;
+}
+
+/* === PREVENT CUMULATIVE LAYOUT SHIFT (CLS) === */
+img, video, iframe {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+/* Reserve space for images before load */
+img {
+  aspect-ratio: attr(width) / attr(height);
+  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.01) 100%);
+}
+
+/* === TOUCH OPTIMIZATION === */
+input[type="file"],
+input[type="range"],
+button,
+a,
+[role="button"] {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* 48px minimum tap targets (2026 standard) */
+button,
+a,
+[role="button"],
+input[type="checkbox"],
+input[type="radio"] {
+  min-height: 48px;
+  min-width: 48px;
+}
+
+/* Safe spacing between interactive elements */
+button + button,
+a + a {
+  margin-left: 8px;
+}
+
+/* === TOUCH VS POINTER DEVICE OPTIMIZATION === */
+@media (hover: hover) and (pointer: fine) {
+  /* Desktop with mouse - enable hover effects */
+  a:hover,
+  button:hover {
+    transition: all 0.15s ease;
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* Touch devices - optimize for tap */
+  a:active,
+  button:active {
+    transform: scale(0.98);
+    transition: transform 0.1s ease;
+  }
+
+  /* Remove hover effects that don't work on touch */
+  a:hover,
+  button:hover {
+    background: inherit;
+  }
+}
+
+/* === ANIMATION OPTIMIZATION === */
+/* Use GPU-accelerated properties only (transform, opacity) */
+.animate-smooth {
+  will-change: transform, opacity;
+  transform: translateZ(0);
+}
+
+/* Prefer reduced motion for accessibility */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* === MOBILE-FIRST RESPONSIVE TYPOGRAPHY === */
+html {
+  /* Fluid typography base */
+  font-size: 16px;
+}
+
+@media (min-width: 360px) {
+  html {
+    font-size: 16.5px;
+  }
+}
+
+@media (min-width: 600px) {
+  html {
+    font-size: 17px;
+  }
+}
+
+@media (min-width: 1000px) {
+  html {
+    font-size: 18px;
+  }
+}
+
+/* === FORM INPUT OPTIMIZATION === */
+input,
+textarea,
+select {
+  /* Prevent zoom on iOS when focusing inputs */
+  font-size: 16px;
+  /* Better touch targets */
+  padding: 12px;
+  border-radius: 8px;
+}
+
+/* Range slider optimization */
+input[type="range"] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 48px;
+  background: transparent;
+  cursor: pointer;
+}
+
+input[type="range"]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #3b82f6;
+  cursor: pointer;
+  margin-top: -10px;
+}
+
+input[type="range"]::-webkit-slider-runnable-track {
+  height: 4px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 2px;
+}
+
+/* === LOADING STATES (INP Optimization) === */
+.loading {
+  pointer-events: none;
+  opacity: 0.7;
+}
+
+/* Skeleton loading placeholder */
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.05) 25%,
+    rgba(255, 255, 255, 0.1) 50%,
+    rgba(255, 255, 255, 0.05) 75%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-loading 1.5s infinite;
+}
+
+@keyframes skeleton-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Mobile Bottom Sheet Animation */
+@keyframes slide-up {
+  from {
+    transform: translateY(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.animate-slide-up {
+  animation: slide-up 0.3s ease-out forwards;
+}
+
+/* Safe area for iPhone notch/home indicator */
+.h-safe-area-inset-bottom {
+  height: env(safe-area-inset-bottom, 0px);
+}
+
+/* === FOCUS STATES (Accessibility) === */
+:focus-visible {
+  outline: 2px solid #3b82f6;
+  outline-offset: 2px;
+}
+
+/* Remove outline for mouse users */
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* === PRINT OPTIMIZATION === */
+@media print {
+  nav,
+  footer,
+  .no-print {
+    display: none !important;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+  }
+}
+
+/* === SAFE AREA INSETS (Notch/Dynamic Island) === */
+@supports (padding: max(0px)) {
+  body {
+    padding-left: max(0px, env(safe-area-inset-left));
+    padding-right: max(0px, env(safe-area-inset-right));
+    padding-bottom: max(0px, env(safe-area-inset-bottom));
+  }
+}
+
+/* === SELECTION STYLING === */
+::selection {
+  background: rgba(59, 130, 246, 0.3);
+  color: white;
+}
+
+/* === SCROLLBAR STYLING (Desktop) === */
+@media (pointer: fine) {
+  ::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: rgba(255, 255, 255, 0.05);
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 255, 255, 0.3);
+  }
+}
+
+/* === ADVANCED LAYOUT - CSS GRID AUTO-FIT === */
+.auto-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr));
+  gap: 1rem;
+}
+
+/* === FLEXBOX UTILITIES === */
+.flex-responsive {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+}
+
+.flex-responsive > * {
+  flex: 1 1 200px;
+  min-width: 0; /* Prevent overflow */
+}
+
+/* === GPU-ACCELERATED ANIMATIONS === */
+.gpu-accelerated {
+  transform: translateZ(0);
+  backface-visibility: hidden;
+  perspective: 1000px;
+}
+
+/* Smooth transitions using only GPU-friendly properties */
+.transition-gpu {
+  transition: transform 0.3s ease, opacity 0.3s ease;
+}
+
+/* === CONTENT VISIBILITY (Performance) === */
+.content-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: 0 500px; /* Estimated height */
+}
+
+/* === INTERSECTION OBSERVER ANIMATIONS === */
+.fade-in-view {
+  opacity: 0;
+  transform: translateY(20px);
+  transition: opacity 0.6s ease, transform 0.6s ease;
+}
+
+.fade-in-view.visible {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+/* === IMAGE LOADING STATES === */
+.img-loading {
+  background: linear-gradient(135deg, rgba(255,255,255,0.03) 0%, rgba(255,255,255,0.08) 100%);
+  position: relative;
+  overflow: hidden;
+}
+
+.img-loading::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(100%); }
+}
+
+.img-loaded {
+  animation: fadeIn 0.3s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* === BUTTON STATES (INP Optimization) === */
+button:active:not(:disabled),
+[role="button"]:active:not(:disabled) {
+  transform: scale(0.97);
+  transition: transform 0.1s ease;
+}
+
+/* Instant feedback for touch */
+@media (pointer: coarse) {
+  button,
+  [role="button"] {
+    transition: transform 0.05s ease;
+  }
+}
+
+/* === CONTAINER QUERIES (Modern CSS) === */
+@container (min-width: 400px) {
+  .container-responsive {
+    flex-direction: row;
+  }
+}
+
+/* === ASPECT RATIO UTILITIES === */
+.aspect-4-3 { aspect-ratio: 4 / 3; }
+.aspect-16-9 { aspect-ratio: 16 / 9; }
+.aspect-3-2 { aspect-ratio: 3 / 2; }
+.aspect-square { aspect-ratio: 1 / 1; }
+
+/* === LAYER SYSTEM FOR PERFORMANCE === */
+@layer base, components, utilities;
+
+/* === HIGH CONTRAST MODE === */
+@media (prefers-contrast: high) {
+  button,
+  a {
+    border: 2px solid currentColor;
+  }
+
+  .border-white\/10 {
+    border-color: rgba(255, 255, 255, 0.5);
+  }
+}
+
+/* === DARK MODE OPTIMIZATIONS === */
+@media (prefers-color-scheme: dark) {
+  img {
+    filter: brightness(0.95); /* Reduce eye strain */
+  }
+}
+
+/* === LANDSCAPE MOBILE OPTIMIZATION === */
+@media (max-height: 500px) and (orientation: landscape) {
+  .hero-section {
+    padding-top: 1rem;
+    padding-bottom: 1rem;
+  }
+
+  .mobile-menu-sheet {
+    max-height: 80vh;
+    overflow-y: auto;
+  }
+}
+
+/* === MOBILE VIEWPORT FIX (iOS Safari 100vh bug) === */
+@supports (height: 100dvh) {
+  body {
+    min-height: 100dvh; /* Dynamic viewport height - accounts for Safari URL bar */
+  }
+}
+
+/* === MOBILE SCROLL FIX === */
+@media (max-width: 768px) {
+  html {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  body {
+    overflow-x: hidden;
+    overflow-y: visible;
+    /* Extra bottom padding for mobile to ensure footer is fully visible */
+    padding-bottom: env(safe-area-inset-bottom, 20px);
+  }
+
+  /* Ensure main content areas can scroll */
+  main {
+    overflow: visible;
+    min-height: auto;
+  }
+}
+
+/* === FLEX GROW FOR MAIN CONTENT === */
+/* Ensure main/content elements grow to fill available space */
+body > main,
+body > div,
+body > section {
+  flex: 1 0 auto;
 }

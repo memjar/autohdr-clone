@@ -1,0 +1,51 @@
+Generation,Purchase_Driver,Rank,Importance_Score,Pct_Selected_Top3,Correlation_To_Purchase,Sample_Size
+Gen Z,Price/Value,1,90,0.576,0.553,493
+Gen Z,Feel Good Factor,2,81,0.511,0.511,596
+Gen Z,Convenience,3,78,0.204,0.387,356
+Gen Z,Social Responsibility,4,69,0.282,0.765,476
+Gen Z,Canadian Made,5,62,0.238,0.666,408
+Gen Z,Customer Service,6,53,0.481,0.376,330
+Gen Z,Sustainability,7,46,0.426,0.635,379
+Gen Z,Brand Trust,8,40,0.38,0.767,559
+Gen Z,Quality,9,29,0.276,0.597,444
+Gen Z,Innovation,10,24,0.373,0.356,285
+Millennials,Sustainability,1,87,0.623,0.682,383
+Millennials,Brand Trust,2,82,0.325,0.718,596
+Millennials,Innovation,3,78,0.195,0.323,310
+Millennials,Quality,4,68,0.49,0.573,459
+Millennials,Convenience,5,57,0.229,0.565,262
+Millennials,Customer Service,6,55,0.47,0.366,312
+Millennials,Feel Good Factor,7,47,0.351,0.549,398
+Millennials,Social Responsibility,8,36,0.525,0.596,413
+Millennials,Canadian Made,9,23,0.335,0.699,456
+Millennials,Price/Value,10,20,0.266,0.473,531
+Gen X,Canadian Made,1,87,0.237,0.43,383
+Gen X,Price/Value,2,87,0.534,0.506,592
+Gen X,Sustainability,3,73,0.373,0.764,291
+Gen X,Customer Service,4,71,0.35,0.498,382
+Gen X,Convenience,5,55,0.442,0.424,371
+Gen X,Brand Trust,6,56,0.398,0.304,530
+Gen X,Quality,7,47,0.175,0.545,591
+Gen X,Feel Good Factor,8,32,0.276,0.659,342
+Gen X,Innovation,9,24,0.18,0.452,362
+Gen X,Social Responsibility,10,24,0.641,0.405,537
+Boomers,Innovation,1,91,0.638,0.504,484
+Boomers,Customer Service,2,85,0.205,0.677,444
+Boomers,Brand Trust,3,76,0.342,0.615,328
+Boomers,Price/Value,4,66,0.28,0.729,537
+Boomers,Sustainability,5,59,0.545,0.685,271
+Boomers,Feel Good Factor,6,55,0.514,0.494,371
+Boomers,Social Responsibility,7,48,0.347,0.379,509
+Boomers,Quality,8,36,0.45,0.481,299
+Boomers,Convenience,9,32,0.61,0.346,511
+Boomers,Canadian Made,10,20,0.261,0.485,484
+Silent,Feel Good Factor,1,90,0.32,0.502,321
+Silent,Convenience,2,84,0.262,0.535,271
+Silent,Canadian Made,3,71,0.286,0.35,554
+Silent,Price/Value,4,71,0.191,0.48,399
+Silent,Social Responsibility,5,62,0.151,0.6,488
+Silent,Innovation,6,52,0.404,0.301,543
+Silent,Customer Service,7,39,0.159,0.497,547
+Silent,Sustainability,8,36,0.446,0.777,510
+Silent,Brand Trust,9,23,0.196,0.674,399
+Silent,Quality,10,22,0.153,0.468,263

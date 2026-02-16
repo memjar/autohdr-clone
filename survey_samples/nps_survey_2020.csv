@@ -1,0 +1,11 @@
+respondent_id,nps_score,category,comment,survey_date
+1,9,Promoter,Great product,2020-01-15
+2,7,Passive,Good but could improve,2020-02-20
+3,10,Promoter,Excellent service,2020-03-10
+4,6,Passive,Average experience,2020-04-15
+5,3,Detractor,Had issues with support,2020-05-20
+6,8,Passive,Pretty good overall,2020-06-25
+7,10,Promoter,Best in class,2020-07-30
+8,9,Promoter,Would recommend,2020-08-15
+9,4,Detractor,Not meeting expectations,2020-09-20
+10,8,Passive,Solid product,2020-10-25

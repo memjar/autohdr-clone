@@ -107,7 +107,7 @@ export default function PricingPage() {
   };
 
   return (
-    <div className="min-h-screen bg-black text-white py-8 px-4">
+    <div className="min-h-screen bg-black text-white py-8 px-4 pb-24">
       {/* Back Button */}
       <div className="max-w-7xl mx-auto mb-8">
         <Link

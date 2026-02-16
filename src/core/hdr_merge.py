@@ -322,6 +322,253 @@ class HDRMerger:
         return result
 
 
+# ============================================
+# SMART GROUPING & QUALITY-AWARE BLENDING
+# ============================================
+
+@dataclass
+class SceneGroup:
+    """A group of related images (same scene, different exposures or duplicates)."""
+    scene_id: str
+    images: List[np.ndarray]
+    group_type: str  # "bracket" or "duplicate"
+    raw_bytes_list: List[bytes]  # Original file bytes for EXIF extraction
+
+
+def extract_exif(file_bytes: bytes) -> dict:
+    """Extract relevant EXIF data from image bytes."""
+    try:
+        from PIL import Image
+        from PIL.ExifTags import Base as ExifBase
+        import io as _io
+
+        img = Image.open(_io.BytesIO(file_bytes))
+        exif_data = img.getexif()
+        if not exif_data:
+            return {}
+
+        result = {}
+        # DateTimeOriginal
+        dto = exif_data.get(ExifBase.DateTimeOriginal) or exif_data.get(ExifBase.DateTime)
+        if dto:
+            from datetime import datetime
+            try:
+                result['timestamp'] = datetime.strptime(str(dto), '%Y:%m:%d %H:%M:%S')
+            except (ValueError, TypeError):
+                pass
+
+        # Exposure time (shutter speed in seconds)
+        et = exif_data.get(ExifBase.ExposureTime)
+        if et:
+            result['exposure_time'] = float(et)
+
+        # F-number
+        fn = exif_data.get(ExifBase.FNumber)
+        if fn:
+            result['fnumber'] = float(fn)
+
+        # Focal length
+        fl = exif_data.get(ExifBase.FocalLength)
+        if fl:
+            result['focal_length'] = float(fl)
+
+        # ISO
+        iso = exif_data.get(ExifBase.ISOSpeedRatings)
+        if iso:
+            result['iso'] = int(iso)
+
+        return result
+    except Exception:
+        return {}
+
+
+def compute_sharpness(image: np.ndarray) -> float:
+    """Compute image sharpness using Laplacian variance."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    return cv2.Laplacian(gray, cv2.CV_64F).var()
+
+
+def group_by_scene(
+    images: List[np.ndarray],
+    file_bytes_list: List[bytes],
+    time_threshold_sec: float = 30.0,
+    ev_threshold: float = 1.0,
+) -> List[SceneGroup]:
+    """
+    Group uploaded images by scene using EXIF data.
+
+    Algorithm:
+    1. Extract EXIF timestamps and exposure settings from each image
+    2. Sort by timestamp
+    3. Cluster by time proximity (< time_threshold_sec = same scene)
+    4. Within cluster: if exposure values vary > ev_threshold, it's brackets;
+       otherwise, pick the sharpest as "best" and mark as duplicates
+
+    Args:
+        images: List of BGR images (np.ndarray)
+        file_bytes_list: Original file bytes for EXIF extraction
+        time_threshold_sec: Max seconds between photos to be same scene
+        ev_threshold: Min EV difference to classify as bracket set
+
+    Returns:
+        List of SceneGroup objects
+    """
+    import math
+
+    # Extract EXIF for each image
+    exif_list = [extract_exif(fb) for fb in file_bytes_list]
+
+    # Build index with EXIF data
+    indexed = []
+    for i, (img, exif) in enumerate(zip(images, exif_list)):
+        indexed.append({
+            'idx': i,
+            'image': img,
+            'exif': exif,
+            'bytes': file_bytes_list[i],
+            'timestamp': exif.get('timestamp'),
+            'exposure_time': exif.get('exposure_time'),
+            'fnumber': exif.get('fnumber'),
+            'focal_length': exif.get('focal_length'),
+        })
+
+    # Sort by timestamp if available, otherwise keep original order
+    has_timestamps = any(item['timestamp'] is not None for item in indexed)
+    if has_timestamps:
+        # Items without timestamps go to the end
+        with_ts = [x for x in indexed if x['timestamp'] is not None]
+        without_ts = [x for x in indexed if x['timestamp'] is None]
+        with_ts.sort(key=lambda x: x['timestamp'])
+        indexed = with_ts + without_ts
+
+    # Cluster by time proximity
+    clusters = []
+    current_cluster = [indexed[0]] if indexed else []
+
+    for item in indexed[1:]:
+        prev = current_cluster[-1]
+        if (item['timestamp'] is not None and prev['timestamp'] is not None):
+            gap = abs((item['timestamp'] - prev['timestamp']).total_seconds())
+            if gap <= time_threshold_sec:
+                current_cluster.append(item)
+                continue
+        elif not has_timestamps:
+            # No timestamps at all — treat all as one group
+            current_cluster.append(item)
+            continue
+
+        # New cluster
+        clusters.append(current_cluster)
+        current_cluster = [item]
+
+    if current_cluster:
+        clusters.append(current_cluster)
+
+    # Classify each cluster as bracket or duplicate
+    groups = []
+    for ci, cluster in enumerate(clusters):
+        if len(cluster) == 1:
+            # Single image — not a group, but return it for consistency
+            groups.append(SceneGroup(
+                scene_id=f"scene_{ci+1}",
+                images=[cluster[0]['image']],
+                group_type="single",
+                raw_bytes_list=[cluster[0]['bytes']],
+            ))
+            continue
+
+        # Check if exposure values vary enough for brackets
+        ev_values = []
+        for item in cluster:
+            et = item['exposure_time']
+            fn = item['fnumber']
+            iso = item['exif'].get('iso', 100)
+            if et and fn:
+                # Compute EV: EV = log2(f^2 / t) - log2(ISO/100)
+                ev = math.log2((fn ** 2) / et) - math.log2(iso / 100)
+                ev_values.append(ev)
+
+        if len(ev_values) >= 2:
+            ev_range = max(ev_values) - min(ev_values)
+            group_type = "bracket" if ev_range >= ev_threshold else "duplicate"
+        else:
+            # Can't determine from EXIF — check brightness as fallback
+            brightnesses = []
+            for item in cluster:
+                gray = cv2.cvtColor(item['image'], cv2.COLOR_BGR2GRAY)
+                brightnesses.append(np.mean(gray))
+            brightness_range = max(brightnesses) - min(brightnesses)
+            group_type = "bracket" if brightness_range > 30 else "duplicate"
+
+        groups.append(SceneGroup(
+            scene_id=f"scene_{ci+1}",
+            images=[item['image'] for item in cluster],
+            group_type=group_type,
+            raw_bytes_list=[item['bytes'] for item in cluster],
+        ))
+
+    return groups
+
+
+def pick_sharpest(images: List[np.ndarray]) -> np.ndarray:
+    """Pick the sharpest image from a list of duplicates."""
+    if len(images) == 1:
+        return images[0]
+    sharpness_scores = [compute_sharpness(img) for img in images]
+    best_idx = int(np.argmax(sharpness_scores))
+    logger.info(f"Picked sharpest image (index {best_idx}, score {sharpness_scores[best_idx]:.1f})")
+    return images[best_idx]
+
+
+def merge_with_sharpness_weights(images: List[np.ndarray]) -> np.ndarray:
+    """
+    Mertens fusion with additional sharpness weighting.
+
+    For each image, computes a sharpness map (Laplacian variance per region).
+    The sharpest regions from each image get higher weight in the fusion,
+    naturally selecting the "best elements" from each photo.
+    """
+    if len(images) < 2:
+        return images[0] if images else np.zeros((1, 1, 3), dtype=np.uint8)
+
+    # Compute per-image sharpness maps (downsample for speed)
+    sharpness_maps = []
+    for img in images:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+        # Laplacian gives local sharpness
+        lap = cv2.Laplacian(gray, cv2.CV_64F)
+        sharpness = np.abs(lap)
+        # Smooth to get regional sharpness (not pixel-level noise)
+        sharpness = cv2.GaussianBlur(sharpness, (31, 31), 0)
+        sharpness_maps.append(sharpness)
+
+    # Normalize sharpness maps to weights that sum to 1
+    total = sum(sharpness_maps)
+    total = np.maximum(total, 1e-10)  # Avoid division by zero
+
+    # Apply Mertens fusion first (handles exposure/contrast/saturation)
+    merge = cv2.createMergeMertens(
+        contrast_weight=1.0,
+        saturation_weight=1.0,
+        exposure_weight=1.0
+    )
+    mertens_result = merge.process(images)
+    mertens_result = np.clip(mertens_result * 255, 0, 255).astype(np.uint8)
+
+    # Blend using sharpness weights as a refinement
+    # Use sharpness to select detail from the best source per region
+    sharpness_blend = np.zeros_like(images[0], dtype=np.float64)
+    for img, smap in zip(images, sharpness_maps):
+        weight = (smap / total)[:, :, np.newaxis]
+        sharpness_blend += img.astype(np.float64) * weight
+    sharpness_blend = np.clip(sharpness_blend, 0, 255).astype(np.uint8)
+
+    # Final: 70% Mertens (good exposure balance) + 30% sharpness blend (best detail)
+    result = cv2.addWeighted(mertens_result, 0.7, sharpness_blend, 0.3, 0)
+
+    return result
+
+
 def estimate_exposures(images: List[np.ndarray]) -> List[float]:
     """
     Estimate relative exposures from image brightness.

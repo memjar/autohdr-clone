@@ -1,0 +1,125 @@
+{
+  "Campaign A - Emotional": {
+    "overall_score": 64.4,
+    "normative_benchmark": 68.5,
+    "performance_vs_norm": 4.5,
+    "recall": {
+      "unaided": 0.369,
+      "aided": 0.722,
+      "brand_linkage": 0.888
+    },
+    "communication": {
+      "main_message_takeaway": 0.714,
+      "persuasion": 0.537,
+      "relevance": 0.643,
+      "differentiation": 0.526
+    },
+    "emotional_response": {
+      "likability": 0.685,
+      "engagement": 0.68,
+      "emotional_intensity": 0.53,
+      "top_emotion": "Trust"
+    },
+    "purchase_intent": {
+      "pre_exposure": 0.504,
+      "post_exposure": 0.475,
+      "lift": 0.134
+    },
+    "demographics_performance": {
+      "Gen Z": 80.6,
+      "Millennials": 65.2,
+      "Gen X": 75.7,
+      "Boomers": 65.4
+    },
+    "verbatims_sample": [
+      "Really connected with the message",
+      "Felt authentic and genuine",
+      "Made me want to try the product"
+    ],
+    "sample_size": 569,
+    "test_date": "2025-12-12",
+    "methodology": "Online Quantitative + Qualitative"
+  },
+  "Campaign B - Functional": {
+    "overall_score": 72.4,
+    "normative_benchmark": 68.5,
+    "performance_vs_norm": 13.2,
+    "recall": {
+      "unaided": 0.458,
+      "aided": 0.695,
+      "brand_linkage": 0.748
+    },
+    "communication": {
+      "main_message_takeaway": 0.568,
+      "persuasion": 0.5,
+      "relevance": 0.848,
+      "differentiation": 0.522
+    },
+    "emotional_response": {
+      "likability": 0.82,
+      "engagement": 0.551,
+      "emotional_intensity": 0.578,
+      "top_emotion": "Trust"
+    },
+    "purchase_intent": {
+      "pre_exposure": 0.542,
+      "post_exposure": 0.473,
+      "lift": 0.139
+    },
+    "demographics_performance": {
+      "Gen Z": 88.0,
+      "Millennials": 83.7,
+      "Gen X": 76.2,
+      "Boomers": 71.4
+    },
+    "verbatims_sample": [
+      "Really connected with the message",
+      "Felt authentic and genuine",
+      "Made me want to try the product"
+    ],
+    "sample_size": 388,
+    "test_date": "2026-01-28",
+    "methodology": "Online Quantitative + Qualitative"
+  },
+  "Campaign C - Humorous": {
+    "overall_score": 79.2,
+    "normative_benchmark": 68.5,
+    "performance_vs_norm": -2.2,
+    "recall": {
+      "unaided": 0.529,
+      "aided": 0.705,
+      "brand_linkage": 0.746
+    },
+    "communication": {
+      "main_message_takeaway": 0.747,
+      "persuasion": 0.734,
+      "relevance": 0.83,
+      "differentiation": 0.471
+    },
+    "emotional_response": {
+      "likability": 0.752,
+      "engagement": 0.664,
+      "emotional_intensity": 0.668,
+      "top_emotion": "Anticipation"
+    },
+    "purchase_intent": {
+      "pre_exposure": 0.447,
+      "post_exposure": 0.567,
+      "lift": 0.182
+    },
+    "demographics_performance": {
+      "Gen Z": 86.8,
+      "Millennials": 79.7,
+      "Gen X": 72.6,
+      "Boomers": 67.0
+    },
+    "verbatims_sample": [
+      "Really connected with the message",
+      "Felt authentic and genuine",
+      "Made me want to try the product"
+    ],
+    "sample_size": 784,
+    "test_date": "2026-01-10",
+    "methodology": "Online Quantitative + Qualitative"
+  }
+}

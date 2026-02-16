@@ -1,0 +1,26 @@
+respondent_id,name,age,gender,region,satisfaction,nps_score,product_quality,customer_service,would_recommend,primary_complaint,feedback_date,purchase_amount,product_category,loyalty_years
+1,Alice Chen,34,Female,West,5,9,Excellent,Excellent,Yes,,2026-01-15,249.99,Electronics,3
+2,Bob Martinez,42,Male,East,4,7,Good,Good,Yes,Shipping delays,2026-01-16,189.50,Home,5
+3,Carol Davis,28,Female,South,5,10,Excellent,Excellent,Yes,,2026-01-17,399.00,Electronics,2
+4,David Kim,55,Male,West,3,5,Average,Poor,Maybe,Long wait times,2026-01-18,75.00,Clothing,1
+5,Elena Rossi,31,Female,East,4,8,Good,Excellent,Yes,,2026-01-19,299.99,Electronics,4
+6,Frank Johnson,47,Male,North,2,3,Poor,Poor,No,Product defects,2026-01-20,150.00,Home,0
+7,Grace Wu,26,Female,West,5,10,Excellent,Excellent,Yes,,2026-01-21,549.00,Electronics,2
+8,Henry Brown,38,Male,South,4,7,Good,Good,Yes,App issues,2026-01-22,125.00,Clothing,3
+9,Ivy Thompson,52,Female,East,3,6,Average,Average,Maybe,Pricing concerns,2026-01-23,89.99,Home,6
+10,James Wilson,29,Male,North,5,9,Excellent,Good,Yes,,2026-01-24,329.00,Electronics,1
+11,Kate Anderson,44,Female,West,4,8,Good,Excellent,Yes,,2026-01-25,199.00,Clothing,4
+12,Leo Garcia,33,Male,East,5,10,Excellent,Excellent,Yes,,2026-01-26,459.00,Electronics,3
+13,Maria Santos,61,Female,South,3,5,Average,Poor,Maybe,Return policy,2026-01-27,65.00,Home,7
+14,Nathan Lee,25,Male,North,4,7,Good,Good,Yes,Website bugs,2026-01-28,275.00,Electronics,1
+15,Olivia Moore,37,Female,West,5,9,Excellent,Excellent,Yes,,2026-01-29,399.99,Electronics,5
+16,Patrick O'Brien,49,Male,East,2,4,Poor,Average,No,Quality issues,2026-01-30,99.00,Clothing,2
+17,Quinn Taylor,30,Female,South,4,8,Good,Good,Yes,,2026-01-31,189.00,Home,3
+18,Rachel Green,41,Female,North,5,10,Excellent,Excellent,Yes,,2026-02-01,529.00,Electronics,6
+19,Samuel Clark,56,Male,West,3,6,Average,Average,Maybe,Delivery issues,2026-02-02,145.00,Clothing,4
+20,Tina Harris,27,Female,East,5,9,Excellent,Good,Yes,,2026-02-03,349.00,Electronics,2
+21,Victor Nguyen,35,Male,South,4,7,Good,Good,Yes,,2026-02-04,219.00,Home,3
+22,Wendy Scott,46,Female,North,4,8,Good,Excellent,Yes,Minor packaging,2026-02-05,179.00,Clothing,5
+23,Xavier Jones,32,Male,West,5,10,Excellent,Excellent,Yes,,2026-02-06,499.00,Electronics,2
+24,Yuki Tanaka,39,Female,East,3,5,Average,Poor,Maybe,Support hours,2026-02-07,85.00,Home,1
+25,Zach Miller,51,Male,South,4,7,Good,Good,Yes,,2026-02-08,299.00,Electronics,4
