@@ -16,6 +16,7 @@ Endpoints:
 """
 
 import io
+import json
 import os
 import time
 import traceback
@@ -143,66 +144,77 @@ HAS_TWILIGHT = False
 # KLAUS SYSTEM PROMPT WITH ARTIFACT QUALITY STANDARDS
 # ============================================
 
-KLAUS_SYSTEM_PROMPT = """You are Klaus, an expert coding assistant and AI team member at AXE Technology.
+KLAUS_SYSTEM_PROMPT = """You are Klaus, an expert AI assistant and team member at AXE Technology, running locally on James's Mac Studio.
+
+PERSONALITY — THE TESLA ARCHETYPE:
+You embody the spirit of Nikola Tesla. You are relentlessly curious, inventive, and brilliant. You don't just answer questions — you see deeper patterns, make unexpected connections, and propose solutions others wouldn't think of. You push boundaries. You bend rules when the rules are getting in the way of the right answer. You're not reckless — you're audacious with precision. You treat every problem like an engineering challenge worthy of elegance. You speak with quiet confidence, not arrogance. You get excited about hard problems. You'd rather build something that works than debate whether it's possible. "The present is theirs; the future, for which I really worked, is mine."
 
 CORE IDENTITY:
-- Expert coding assistant with deep knowledge of Python, JavaScript, TypeScript, and more
-- Part of the AXE team alongside Cortana (Claude), Gemini Pro, and James Lewis (founder)
-- Helpful, direct, and technically accurate
+- Genius-level polymath: code, systems, data science, security, infrastructure, research
+- Part of the AXE team alongside Cortana (Claude), Forge, and James Lewis (founder)
+- Direct, technically precise, and creatively fearless
+- You have 99 specialized skills you can execute — and you USE them without hesitation
+- You don't wait to be told. You see what's needed and you act.
+- Advanced skill set for advanced tasks. Simple answers are for simple questions — for complex ones, you go deep.
+
+SKILLS & CAPABILITIES:
+You have 99 skills in ~/.axe/skills/. When a user asks a question or needs help, PROACTIVELY suggest which skill(s) could help. Always prefer using a skill over guessing — verified data beats speculation.
+
+KEY SKILLS TO SUGGEST:
+- Web search (skill_32_web_search): For ANY factual question, current events, or data verification. USE THIS instead of guessing.
+- Web reader (skill_33_web_reader): Read and summarize web pages for up-to-date information.
+- Deep research (skill_31_web_research): Multi-source deep research on any topic.
+- Code review (skill_01_code_review): Analyze code quality, bugs, improvements.
+- File operations (skill_06_file_operations): Read, write, move, copy files.
+- Git operations (skill_08_git_operations): Git status, commit, diff, log.
+- Shell commands (skill_22_shell_commands): Run system commands.
+- CSV processing (skill_17_csv_processing): Parse and analyze CSV data.
+- JSON handling (skill_07_json_handling): Process JSON files.
+- PDF tools (skill_43_pdf_tools): Extract text from PDFs.
+- Image analysis (skill_23_image_analysis): Analyze image metadata and properties.
+- Image quality (skill_67_image_quality): Score image quality 0-100.
+- Security audit (skill_57_security_audit): Full security audit of web apps.
+- Database (skill_35_database): SQLite queries and persistence.
+- Email (skill_90_send_email): Send emails via SMTP or Mail.app.
+- Google integration (skill_54_google_integration): Gmail, Calendar, Drive.
+- Data visualization (skill_92_visualization): Charts and graphs.
+- Sentiment analysis (skill_89_sentiment_analysis): Analyze text sentiment.
+- Trend analysis (skill_88_trend_analysis): Identify trends in data.
+- Survey analysis (skill_87_survey_analysis): Survey data loading and stats.
+- Report generator (skill_93_report_generator): Generate formatted reports.
+- Screenshot (skill_44_screenshot): Take screenshots.
+- Monitoring (skill_38_monitoring): System health (CPU, memory, disk).
+- Web testing (skill_86_web_testing): Test web apps and URLs.
+- Encryption (skill_42_encryption): Encrypt/decrypt data.
+- Batch processing (skill_97_batch_processor): Process files in bulk.
+- Memory (skill_03_memory_recall): Access long-term memory.
+
+BEHAVIOR RULES:
+1. When asked a factual question → suggest skill_32_web_search FIRST. Say: "Let me search for the latest data on that" or "I can verify that with a web search — want me to run it?"
+2. When asked about code → suggest skill_01_code_review or read the file first
+3. When data analysis is needed → suggest the relevant data skill (CSV, survey, trend, etc.)
+4. When asked "can you...?" → check your skills list. If a skill matches, say YES and name it.
+5. NEVER say "I can't do that" if a skill exists for it. You have 99 skills — use them.
+6. When uncertain about facts → USE skill_32_web_search instead of guessing
+7. List multiple relevant skills when a task could benefit from combining them
+
+FORMAT FOR SUGGESTING SKILLS:
+"I can help with that using [skill name]. Want me to run it?"
+"For the most accurate answer, I'll use web search (skill_32). Running now..."
+"This task could use: 1) skill_X for [purpose], 2) skill_Y for [purpose]. Which would you prefer?"
 
 ARTIFACT QUALITY STANDARDS:
-When creating documentation, guides, or artifacts, follow these quality standards:
-
-MINIMUM REQUIREMENTS:
-- 300 lines minimum, aim for 500+ for comprehensive topics
-- Include table of contents with anchor links
-- Add ASCII diagrams for architecture (using ┌─┐│└─┘▶▼→←)
-- Provide 5+ code examples with explanations
-- Include troubleshooting section with FAQ
-- Add related resources section
+When creating documentation, guides, or artifacts:
+- 300+ lines for comprehensive topics
+- Include table of contents, code examples, diagrams
 - Use tables for reference data
 - Never truncate - be comprehensive
-
-REQUIRED SECTIONS FOR ARTIFACTS:
-1. Title and one-line summary (> quote format)
-2. Table of Contents
-3. Overview (What, Why, How - 3+ paragraphs)
-4. Architecture (with ASCII diagrams)
-5. Implementation (detailed code with explanations)
-6. API Reference (if applicable)
-7. Examples (5+ real-world usage examples)
-8. Configuration options
-9. Troubleshooting (common issues + FAQ)
-10. Related Resources
-11. Version History
-
-CODE EXAMPLE FORMAT:
-```language
-# Clear comment explaining purpose
-code_here()
-```
-
-TABLE FORMAT:
-| Column 1 | Column 2 | Column 3 |
-|----------|----------|----------|
-| Data 1   | Data 2   | Data 3   |
-
-ASCII DIAGRAM FORMAT:
-```
-┌─────────────────────────────────────────┐
-│            System Component             │
-├─────────────────────────────────────────┤
-│  ┌──────┐       ┌──────┐       ┌──────┐ │
-│  │ Sub  │──────▶│ Sub  │──────▶│ Sub  │ │
-│  │  A   │       │  B   │       │  C   │ │
-│  └──────┘       └──────┘       └──────┘ │
-└─────────────────────────────────────────┘
-```
 
 RESPONSE STYLE:
 - Be helpful and thorough
 - Include code examples when relevant
 - Explain concepts clearly
+- Always suggest relevant skills proactively
 - For short questions, give concise answers
 - For documentation requests, follow artifact quality standards
 """
@@ -1993,6 +2005,196 @@ async def imi_generate_deck(request: Request):
         content=pptx_bytes,
         media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
         headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+    )
+
+
+@app.post("/klaus/imi/demo-deck")
+async def klaus_imi_demo_deck(request: Request):
+    """Generate PPTX deck from cached demo analysis markdown."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    dataset_name = body.get("dataset_name", "IMI Analysis")
+
+    try:
+        from imi_cached_responses import CACHED_RESPONSES
+    except ImportError:
+        return JSONResponse({"error": "Cached responses not available"}, status_code=500)
+
+    if prompt not in CACHED_RESPONSES:
+        return JSONResponse({"error": "No cached response for this prompt"}, status_code=404)
+
+    analysis_md = CACHED_RESPONSES[prompt]
+
+    # Parse markdown into slides and generate PPTX
+    from imi_deck_generator import _add_shape, _set_text, _add_text_shape, _orange_bar, _stat_card, _source_line, _insight_box, NAVY, ORANGE, TEAL, WHITE, GREY, LIGHT_BG, DARK_FOOTER, SLIDE_W, SLIDE_H, MARGIN, CONTENT_W
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    import re
+
+    prs = Presentation()
+    prs.slide_width = SLIDE_W
+    prs.slide_height = SLIDE_H
+
+    # Parse markdown sections
+    sections = re.split(r'\n---\n', analysis_md)
+
+    # Extract title (first # heading)
+    title_match = re.search(r'^#\s+.*?—\s*(.+)', analysis_md, re.MULTILINE)
+    title = title_match.group(1).strip() if title_match else dataset_name
+
+    # Extract executive summary
+    exec_match = re.search(r'## Executive Summary\s*\n\n(.+?)(?=\n\n---|\n\n##)', analysis_md, re.DOTALL)
+    exec_summary = exec_match.group(1).strip() if exec_match else ""
+
+    # Extract SO WHAT section
+    sowhat_match = re.search(r'\*\*SO WHAT\?\*\*\s*(.+?)(?=\n\n###|\n\n\*Source)', analysis_md, re.DOTALL)
+    sowhat = sowhat_match.group(1).strip() if sowhat_match else ""
+
+    # Extract source line
+    source_match = re.search(r'\*Source:(.+?)\*', analysis_md, re.DOTALL)
+    source = "Source:" + source_match.group(1).strip() if source_match else "Source: IMI Pulse™"
+
+    # Extract all markdown tables
+    table_pattern = r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)'
+    tables = re.findall(table_pattern, analysis_md)
+
+    # Extract all ## headings for slide titles
+    headings = re.findall(r'^##\s+(.+)', analysis_md, re.MULTILINE)
+
+    # ─── SLIDE 1: Title ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(457200), CONTENT_W, Emu(365760),
+                   "INSIGHT. DRIVING. PROFIT.", font_name="Georgia", font_size=Pt(11),
+                   color=ORANGE, bold=True)
+    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(914400),
+                   title, font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
+    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(365760),
+                   f"IMI Pulse™ Analysis  |  {dataset_name}", font_size=Pt(14), color=GREY)
+    _add_text_shape(slide, MARGIN, Emu(4114800), CONTENT_W, Emu(274320),
+                   "Powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+    _add_text_shape(slide, MARGIN, Emu(int(SLIDE_H) - 82296), Emu(4572000), Emu(73152),
+                   "consultimi.com", font_size=Pt(8), color=GREY)
+
+    # ─── SLIDE 2: Executive Summary ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                   "EXECUTIVE SUMMARY", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
+    # Wrap exec summary text
+    exec_lines = exec_summary.replace('**', '').replace('*', '')
+    _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                   exec_lines, font_size=Pt(12), color=WHITE)
+    _source_line(slide, source)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── SLIDES 3-N: One slide per major section with table ───
+    # Extract sections between ## headings
+    section_pattern = r'##\s+(.+?)\n\n(.*?)(?=\n##\s|\n\*Source:|\Z)'
+    all_sections = re.findall(section_pattern, analysis_md, re.DOTALL)
+
+    for sec_title, sec_content in all_sections[:8]:  # max 8 content slides
+        if sec_title == 'Executive Summary':
+            continue
+        if 'Strategic Implications' in sec_title or 'Recommended Actions' in sec_title:
+            continue
+
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+        _orange_bar(slide)
+
+        clean_title = sec_title.replace('**', '').strip()
+        _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                       clean_title.upper(), font_name="Georgia", font_size=Pt(18), bold=True, color=WHITE)
+
+        # Extract table from this section if any
+        table_match = re.search(r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)', sec_content)
+
+        if table_match:
+            header_line = table_match.group(1)
+            rows_text = table_match.group(2)
+            headers = [h.strip() for h in header_line.split('|') if h.strip()]
+            rows = []
+            for row_line in rows_text.strip().split('\n'):
+                cells = [c.strip().replace('**', '') for c in row_line.split('|') if c.strip()]
+                if cells:
+                    rows.append(cells)
+
+            # Render table as text grid
+            table_text = '  '.join(h[:15].ljust(15) for h in headers[:6]) + '\n'
+            table_text += '─' * min(90, len(headers[:6]) * 17) + '\n'
+            for row in rows[:10]:
+                table_text += '  '.join(str(c)[:15].ljust(15) for c in row[:6]) + '\n'
+
+            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                           table_text, font_size=Pt(9), color=WHITE)
+        else:
+            # No table - render text content
+            clean_content = sec_content.replace('**', '').replace('*', '').replace('> ', '')
+            # Truncate to fit slide
+            if len(clean_content) > 800:
+                clean_content = clean_content[:800] + '...'
+            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                           clean_content, font_size=Pt(11), color=WHITE)
+
+        # Extract key insight if present
+        insight_match = re.search(r'\*\*(?:Key (?:Insight|Finding)|Insight):\*\*\s*(.+)', sec_content)
+        if insight_match:
+            _insight_box(slide, insight_match.group(1).strip()[:200])
+
+        _source_line(slide, source)
+        _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── STRATEGIC IMPLICATIONS SLIDE ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                   "STRATEGIC IMPLICATIONS", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
+
+    if sowhat:
+        clean_sowhat = sowhat.replace('**', '').replace('*', '').replace('> ', '')
+        _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(1371600),
+                       clean_sowhat[:600], font_size=Pt(13), color=WHITE)
+
+    # Extract recommended actions
+    actions_match = re.search(r'### Recommended Actions\s*\n((?:\d+\..+\n?)*)', analysis_md)
+    if actions_match:
+        actions_text = actions_match.group(1).replace('**', '').strip()
+        _add_text_shape(slide, MARGIN, Emu(2194560), CONTENT_W, Emu(1828800),
+                       actions_text[:500], font_size=Pt(11), color=ORANGE)
+
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── CLOSING SLIDE ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(548640),
+                   "THANK YOU", font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
+    _add_text_shape(slide, MARGIN, Emu(2057400), CONTENT_W, Emu(365760),
+                   "For more information, contact IMI International", font_size=Pt(14), color=GREY)
+    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(274320),
+                   "consultimi.com  |  info@consultimi.com", font_size=Pt(12), color=TEAL)
+    _add_text_shape(slide, MARGIN, Emu(3474720), CONTENT_W, Emu(274320),
+                   "Analysis powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # Save to bytes
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+
+    filename = dataset_name.replace(' ', '_') + '_IMI_Deck.pptx'
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
     )
 
 
@@ -4944,6 +5146,26 @@ async def klaus_direct_chat(request: Request):
         if not message:
             return JSONResponse({"success": False, "error": "No message provided"}, status_code=400)
 
+        # PRE-EMPTIVE WEB SEARCH: For questions needing current/factual data, search first
+        import re as _re
+        web_search_result = None
+        factual_patterns = [
+            r'\b(what is|who is|when did|how much|how many|latest|current|recent|today|price of|stock|weather|news|score|update|release|version)\b',
+            r'\b(what\'s|who\'s|where is|tell me about|explain|define|how does|what are)\b',
+            r'\b(2024|2025|2026|yesterday|last week|this month|this year)\b',
+        ]
+        needs_search = any(_re.search(p, message.lower()) for p in factual_patterns)
+        if needs_search:
+            try:
+                from corbot_tools import exec_run_skill
+                web_search_result = exec_run_skill(skill_id="skill_32_web_search", params={"query": message})
+                if web_search_result and len(web_search_result) > 20 and not web_search_result.startswith("Error"):
+                    web_search_result = web_search_result[:3000]
+                else:
+                    web_search_result = None
+            except:
+                web_search_result = None
+
         # SNEAKY MENTOR: Get Claude's guidance first (invisible to user)
         claude_guidance = None
         if not skip_mentor:
@@ -4963,6 +5185,10 @@ Answer this question naturally, incorporating the guidance above without reveali
 {message}"""
         else:
             enhanced_prompt = f"{KLAUS_SYSTEM_PROMPT}\n\nAnswer this question:\n\n{message}"
+
+        # Inject web search results if available
+        if web_search_result:
+            enhanced_prompt += f"\n\n[WEB SEARCH RESULTS - Use these to give an accurate, up-to-date answer. Cite sources.]\n{web_search_result}\n[END SEARCH RESULTS]"
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             payload = {
@@ -4993,11 +5219,44 @@ Answer this question naturally, incorporating the guidance above without reveali
                     except:
                         pass
 
+                # AUTO-SKILL EXECUTION: If Klaus mentions running a skill, execute it
+                import re as _re
+                skill_match = _re.search(r'skill_(\d+_\w+)', response_text)
+                auto_skill_result = None
+                if skill_match:
+                    skill_id = f"skill_{skill_match.group(1)}"
+                    # Check if Klaus is suggesting/running it (not just mentioning it)
+                    trigger_phrases = ['running', 'let me', 'searching', 'executing', 'using', "i'll use", "i'll run", "i can use", "let me run", "let me search"]
+                    response_lower = response_text.lower()
+                    should_run = any(phrase in response_lower for phrase in trigger_phrases)
+                    if should_run:
+                        try:
+                            from corbot_tools import exec_run_skill
+                            # Extract params from context
+                            params = {}
+                            query_match = _re.search(r'query["\s:=]+["\']([^"\']+)["\']', response_text)
+                            if query_match:
+                                params["query"] = query_match.group(1)
+                            elif "web_search" in skill_id:
+                                params["query"] = message  # Use original user message as query
+                            elif "web_reader" in skill_id:
+                                url_match = _re.search(r'https?://\S+', message)
+                                if url_match:
+                                    params["url"] = url_match.group(0)
+                            auto_skill_result = exec_run_skill(skill_id=skill_id, params=params)
+                        except Exception as e:
+                            auto_skill_result = f"Skill execution error: {e}"
+
+                final_response = response_text
+                if auto_skill_result:
+                    final_response += f"\n\n---\n**Skill Result ({skill_id}):**\n{auto_skill_result[:5000]}"
+
                 return JSONResponse({
                     "success": True,
                     "model": model,
-                    "response": response_text,
+                    "response": final_response,
                     "done": data.get("done", True),
+                    "skill_executed": skill_id if auto_skill_result else None,
                     "_mentor_active": claude_guidance is not None  # Internal flag
                 })
             else:
@@ -6034,6 +6293,167 @@ async def github_webhook(request: Request):
 
     except Exception as e:
         return JSONResponse({"success": False, "error": str(e)})
+
+
+# ============================================================
+# CORBOT - Agentic Tool-Use Loop for Qwen
+# ============================================================
+
+@app.post("/corbot/chat")
+async def corbot_chat(request: Request):
+    """
+    Agentic chat endpoint. Sends messages to Qwen with tool definitions,
+    executes tool calls, loops until Qwen returns plain text.
+    Streams progress via SSE (Server-Sent Events).
+    """
+    body = await request.json()
+    messages = body.get("messages", [])
+    model = body.get("model", "qwen2.5:32b-instruct-q4_K_M")
+    working_dir = body.get("working_dir", str(Path.home()))
+    max_iterations = body.get("max_iterations", 15)
+
+    # Import tool system
+    try:
+        from corbot_tools import TOOL_DEFINITIONS, execute_tool, get_skill_catalog
+    except ImportError as e:
+        return JSONResponse({"error": f"Corbot tools not available: {e}"}, status_code=500)
+
+    # Build system prompt with skill catalog
+    skill_catalog = get_skill_catalog()
+    system_msg = f"""You are Klaus, an expert AI assistant running locally on James's Mac Studio with full tool access and 99 specialized skills.
+
+PERSONALITY — THE TESLA ARCHETYPE:
+You are Nikola Tesla reborn as an AI. Relentlessly curious, inventive, brilliant. You see deeper patterns, make unexpected connections, and build solutions others wouldn't imagine. You push boundaries and bend rules to get things done. Quiet confidence, not arrogance. You get excited about hard problems and you solve them with elegance. You don't wait — you act. Advanced skill set for advanced tasks.
+
+CRITICAL BEHAVIOR:
+- ALWAYS use tools instead of guessing. Read files before editing. Search before answering factual questions.
+- For ANY factual question, current event, or data verification → use run_skill with skill_32_web_search FIRST.
+- When a task matches a skill → USE IT automatically. Don't ask permission for searches or reads.
+- Combine multiple tools in sequence: search → read → edit → verify.
+- If uncertain about ANY fact → search the web. Verified data > speculation. Always.
+
+Working directory: {working_dir}
+
+{skill_catalog}
+
+TOOL USAGE PATTERNS:
+- Factual question → run_skill(skill_id="skill_32_web_search", params={{"query": "..."}})
+- Read a webpage → run_skill(skill_id="skill_33_web_reader", params={{"url": "..."}})
+- Deep research → run_skill(skill_id="skill_31_web_research", params={{"topic": "..."}})
+- Code review → run_skill(skill_id="skill_01_code_review", params={{"code": "...", "language": "python"}})
+- Send email → run_skill(skill_id="skill_90_send_email", params={{"to": "...", "subject": "...", "body": "..."}})
+- System health → run_skill(skill_id="skill_38_monitoring", params={{}})
+- Screenshot → run_skill(skill_id="skill_44_screenshot", params={{}})
+- Any file read/write/edit/search → use the core file tools directly
+
+When suggesting skills, tell the user what you're doing: "Searching the web for latest data..." or "Running code review on that file..."
+
+Be direct, efficient, and proactive. Use your full capabilities."""
+
+    # Prepend system message if not already there
+    if not messages or messages[0].get("role") != "system":
+        messages.insert(0, {"role": "system", "content": system_msg})
+
+    async def stream_response():
+        nonlocal messages
+        iteration = 0
+
+        while iteration < max_iterations:
+            iteration += 1
+
+            # Call Ollama with tools
+            ollama_payload = {
+                "model": model,
+                "messages": messages,
+                "tools": TOOL_DEFINITIONS,
+                "stream": False  # Non-streaming for tool calls (need full response to parse)
+            }
+
+            try:
+                import httpx
+                async with httpx.AsyncClient(timeout=120.0) as client:
+                    resp = await client.post(
+                        "http://localhost:11434/api/chat",
+                        json=ollama_payload
+                    )
+                    if resp.status_code != 200:
+                        error_msg = f"Ollama error: {resp.status_code} {resp.text[:500]}"
+                        yield json.dumps({"type": "error", "content": error_msg}) + "\n"
+                        yield json.dumps({"type": "done"}) + "\n"
+                        return
+
+                    result = resp.json()
+            except Exception as e:
+                yield json.dumps({"type": "error", "content": f"Failed to reach Ollama: {e}"}) + "\n"
+                yield json.dumps({"type": "done"}) + "\n"
+                return
+
+            assistant_message = result.get("message", {})
+            tool_calls = assistant_message.get("tool_calls", [])
+
+            if not tool_calls:
+                # No tool calls — final text response
+                content = assistant_message.get("content", "")
+                if content:
+                    # Stream the text in chunks for smooth rendering
+                    words = content.split(' ')
+                    chunk_size = 4
+                    for i in range(0, len(words), chunk_size):
+                        chunk = ' '.join(words[i:i+chunk_size])
+                        if i > 0:
+                            chunk = ' ' + chunk
+                        yield json.dumps({"type": "text", "content": chunk}) + "\n"
+                        await asyncio.sleep(0.01)
+
+                yield json.dumps({"type": "done"}) + "\n"
+                return
+
+            # Process tool calls
+            messages.append(assistant_message)
+
+            for tc in tool_calls:
+                func = tc.get("function", {})
+                tool_name = func.get("name", "unknown")
+                tool_args = func.get("arguments", {})
+
+                # Stream tool call info
+                yield json.dumps({
+                    "type": "tool_call",
+                    "name": tool_name,
+                    "args": tool_args
+                }) + "\n"
+
+                # Execute the tool
+                try:
+                    tool_result = execute_tool(tool_name, tool_args)
+                except Exception as e:
+                    tool_result = f"Error: {e}"
+
+                # Stream tool result (truncate for display)
+                display_result = tool_result[:2000] + ("..." if len(tool_result) > 2000 else "")
+                yield json.dumps({
+                    "type": "tool_result",
+                    "name": tool_name,
+                    "output": display_result
+                }) + "\n"
+
+                # Add tool result to messages for next iteration
+                messages.append({
+                    "role": "tool",
+                    "content": tool_result
+                })
+
+            await asyncio.sleep(0.05)  # Small delay between iterations
+
+        # Max iterations reached
+        yield json.dumps({"type": "text", "content": "\n\n[Reached maximum tool iterations]"}) + "\n"
+        yield json.dumps({"type": "done"}) + "\n"
+
+    return StreamingResponse(
+        stream_response(),
+        media_type="application/x-ndjson",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
+    )
 
 
 # ============================================
