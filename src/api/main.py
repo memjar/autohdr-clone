@@ -4219,12 +4219,13 @@ async def ws_status():
 
 
 # ============================================
-# CORBOT — Agentic coding assistant
+# CORBOT — (moved to end of file, line ~6300+)
 # ============================================
 
-from corbot_tools import TOOL_DEFINITIONS, execute_tool
+# NOTE: Old corbot endpoint removed — using the enhanced version below
+# with pre-emptive skill execution, Tesla personality, and skill catalog.
 
-CORBOT_SYSTEM = """You are Corbot, an agentic coding assistant with direct access to the filesystem and shell. You were built by James Lewis as part of the AXE platform.
+_CORBOT_OLD_SYSTEM = """You are Corbot, an agentic coding assistant with direct access to the filesystem and shell. You were built by James Lewis as part of the AXE platform.
 
 You have the following tools available — use them proactively to answer questions and complete tasks:
 
@@ -4248,93 +4249,7 @@ RULES:
 You operate on a Mac Studio running macOS. The backend is FastAPI + Ollama (Qwen 2.5)."""
 
 
-@app.post("/corbot/chat")
-async def corbot_chat(request: Request):
-    """Agentic coding chat — Qwen + tool loop, streamed via SSE."""
-    body = await request.json()
-    messages = body.get("messages", [])
-    model = body.get("model", "qwen2.5:32b")
-    working_dir = body.get("working_dir", os.path.expanduser("~"))
-    max_iterations = 10  # Safety limit
-
-    # Prepend system prompt
-    full_messages = [{"role": "system", "content": CORBOT_SYSTEM}] + messages
-
-    async def agentic_stream():
-        nonlocal full_messages
-        iterations = 0
-
-        while iterations < max_iterations:
-            iterations += 1
-
-            # Call Ollama with tools
-            ollama_payload = {
-                "model": model,
-                "messages": full_messages,
-                "tools": TOOL_DEFINITIONS,
-                "stream": False,
-                "options": {"temperature": 0.1, "num_ctx": 32768}
-            }
-
-            try:
-                resp = await _ollama_client.post(
-                    f"{OLLAMA_BASE}/api/chat",
-                    json=ollama_payload,
-                    headers={"content-type": "application/json"}
-                )
-                if resp.status_code != 200:
-                    yield _json.dumps({"type": "error", "content": f"Ollama error: {resp.status_code}"}).encode() + b"\n"
-                    break
-
-                result = resp.json()
-                msg = result.get("message", {})
-                content = msg.get("content", "")
-                tool_calls = msg.get("tool_calls", [])
-
-            except Exception as e:
-                yield _json.dumps({"type": "error", "content": f"Ollama connection error: {str(e)}"}).encode() + b"\n"
-                break
-
-            # If no tool calls, we're done — stream the final text
-            if not tool_calls:
-                if content:
-                    yield _json.dumps({"type": "text", "content": content}).encode() + b"\n"
-                yield _json.dumps({"type": "done"}).encode() + b"\n"
-                break
-
-            # If there's text before tool calls, stream it
-            if content:
-                yield _json.dumps({"type": "text", "content": content}).encode() + b"\n"
-
-            # Execute each tool call
-            full_messages.append(msg)  # Add assistant message with tool_calls
-
-            for tc in tool_calls:
-                fn = tc.get("function", {})
-                tool_name = fn.get("name", "")
-                tool_args = fn.get("arguments", {})
-
-                # Stream tool call event
-                yield _json.dumps({"type": "tool_call", "name": tool_name, "args": tool_args}).encode() + b"\n"
-
-                # Execute
-                tool_result = execute_tool(tool_name, tool_args, working_dir)
-
-                # Stream tool result
-                yield _json.dumps({"type": "tool_result", "name": tool_name, **tool_result}).encode() + b"\n"
-
-                # Add tool result to messages for next iteration
-                full_messages.append({
-                    "role": "tool",
-                    "content": tool_result.get("output", "")
-                })
-
-        else:
-            yield _json.dumps({"type": "error", "content": "Max tool iterations reached"}).encode() + b"\n"
-            yield _json.dumps({"type": "done"}).encode() + b"\n"
-
-    return StreamingResponse(agentic_stream(), status_code=200,
-                             media_type="application/x-ndjson")
+# Old corbot_chat endpoint removed — using enhanced version at end of file
 # DASHBOARD API - AXE Command Center
 # ============================================
 
@@ -6314,9 +6229,52 @@ async def corbot_chat(request: Request):
 
     # Import tool system
     try:
-        from corbot_tools import TOOL_DEFINITIONS, execute_tool, get_skill_catalog
+        import sys as _sys
+        # Ensure corbot_tools is importable from the api directory
+        _api_dir = str(Path(__file__).parent)
+        if _api_dir not in _sys.path:
+            _sys.path.insert(0, _api_dir)
+        from corbot_tools import TOOL_DEFINITIONS, execute_tool, get_skill_catalog, exec_run_skill
+        print(f"[CORBOT] Tools imported OK, {len(TOOL_DEFINITIONS)} tools")
     except ImportError as e:
+        print(f"[CORBOT] Import failed: {e}")
         return JSONResponse({"error": f"Corbot tools not available: {e}"}, status_code=500)
+
+    # PRE-EMPTIVE SKILL EXECUTION: Run skills before Qwen for reliability
+    import re as _re
+    last_user_msg = ""
+    for m in reversed(messages):
+        if m.get("role") == "user":
+            last_user_msg = m.get("content", "")
+            break
+
+    pre_results = []
+
+    # Auto web search for factual questions
+    factual_patterns = [
+        r'\b(what is|who is|when did|how much|how many|latest|current|recent|today|price of|stock|weather|news|score|update|release|version)\b',
+        r'\b(what\'s|who\'s|where is|tell me about|explain|define|how does|what are)\b',
+        r'\b(2024|2025|2026|yesterday|last week|this month|this year)\b',
+    ]
+    if any(_re.search(p, last_user_msg.lower()) for p in factual_patterns):
+        try:
+            web_result = exec_run_skill(skill_id="skill_32_web_search", params={"query": last_user_msg})
+            print(f"[CORBOT] Pre-emptive web search result length: {len(web_result) if web_result else 0}")
+            if web_result and len(web_result) > 20 and not web_result.startswith("Error"):
+                pre_results.append(f"[WEB SEARCH RESULTS for '{last_user_msg}']\n{web_result[:3000]}\n[END SEARCH RESULTS]")
+        except Exception as e:
+            print(f"[CORBOT] Pre-emptive web search error: {e}")
+            import traceback; traceback.print_exc()
+
+    # Auto monitoring for system health questions
+    monitoring_patterns = [r'\b(cpu|memory|ram|disk|uptime|system health|system status|load|process)\b']
+    if any(_re.search(p, last_user_msg.lower()) for p in monitoring_patterns):
+        try:
+            mon_result = exec_run_skill(skill_id="skill_38_monitoring", params={})
+            if mon_result and not mon_result.startswith("Error"):
+                pre_results.append(f"[SYSTEM MONITORING DATA]\n{mon_result[:2000]}\n[END MONITORING DATA]")
+        except:
+            pass
 
     # Build system prompt with skill catalog
     skill_catalog = get_skill_catalog()
@@ -6348,7 +6306,9 @@ TOOL USAGE PATTERNS:
 
 When suggesting skills, tell the user what you're doing: "Searching the web for latest data..." or "Running code review on that file..."
 
-Be direct, efficient, and proactive. Use your full capabilities."""
+Be direct, efficient, and proactive. Use your full capabilities.
+
+{chr(10).join(pre_results) if pre_results else ''}"""
 
     # Prepend system message if not already there
     if not messages or messages[0].get("role") != "system":
@@ -6357,6 +6317,15 @@ Be direct, efficient, and proactive. Use your full capabilities."""
     async def stream_response():
         nonlocal messages
         iteration = 0
+
+        # Stream pre-emptive skill results so user sees them
+        for pr in pre_results:
+            if "WEB SEARCH" in pr:
+                yield json.dumps({"type": "tool_call", "name": "run_skill", "args": {"skill_id": "skill_32_web_search", "params": {"query": last_user_msg}}}) + "\n"
+                yield json.dumps({"type": "tool_result", "name": "run_skill", "status": "ok", "output": pr[:1500]}) + "\n"
+            elif "MONITORING" in pr:
+                yield json.dumps({"type": "tool_call", "name": "run_skill", "args": {"skill_id": "skill_38_monitoring"}}) + "\n"
+                yield json.dumps({"type": "tool_result", "name": "run_skill", "status": "ok", "output": pr[:1500]}) + "\n"
 
         while iteration < max_iterations:
             iteration += 1
