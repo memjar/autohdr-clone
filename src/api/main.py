@@ -17,9 +17,12 @@ Endpoints:
 
 import io
 import json
+import logging
 import os
 import time
 import traceback
+
+logger = logging.getLogger("klausimi")
 from datetime import datetime
 from pathlib import Path
 from typing import List, Optional
@@ -277,6 +280,23 @@ if HAS_SECURITY:
     app.middleware("http")(security_middleware)
 
 # ============================================
+# OBSERVABILITY MIDDLEWARE
+# ============================================
+try:
+    from src.api.middleware.error_handler import ErrorHandlerMiddleware
+    from src.api.middleware.logging import RequestLoggingMiddleware, get_metrics
+    app.add_middleware(RequestLoggingMiddleware)
+    app.add_middleware(ErrorHandlerMiddleware)
+    HAS_OBSERVABILITY = True
+    print("Observability middleware loaded (structured logging + error handling)")
+except ImportError as e:
+    HAS_OBSERVABILITY = False
+    print(f"Warning: Observability middleware not loaded: {e}")
+
+    def get_metrics():
+        return {"error": "observability not loaded"}
+
+# ============================================
 # STARTUP EVENT
 # ============================================
 
@@ -312,6 +332,8 @@ async def startup_event():
     print("║    GET  /docs      - API documentation                        ║")
     print("╚══════════════════════════════════════════════════════════════╝")
     print("")
+
+    # Memory autosave handled by fswatch daemon (event-driven, see ~/.axe/sync.sh)
 
 
 # ============================================
@@ -833,52 +855,60 @@ async def root():
 
 @app.get("/health")
 async def health():
-    """Health check - returns system status."""
+    """Deep health check — probes Ollama, disk, and all subsystems."""
+    import shutil
+
+    # Check Ollama
+    ollama_ok = False
+    ollama_models = 0
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            resp = await client.get("http://localhost:11434/api/tags")
+            if resp.status_code == 200:
+                ollama_ok = True
+                ollama_models = len(resp.json().get("models", []))
+    except Exception:
+        pass
+
+    # Check disk space
+    disk = shutil.disk_usage("/")
+    disk_free_gb = round(disk.free / (1024 ** 3), 1)
+    disk_ok = disk_free_gb > 5  # warn below 5GB
+
+    # Check ngrok (quick DNS-level check)
+    ngrok_ok = False
+    try:
+        async with httpx.AsyncClient(timeout=3.0) as client:
+            resp = await client.get("http://127.0.0.1:4040/api/tunnels")
+            if resp.status_code == 200:
+                ngrok_ok = len(resp.json().get("tunnels", [])) > 0
+    except Exception:
+        pass
+
+    # Overall status
+    all_ok = ollama_ok and disk_ok
+    status = "healthy" if all_ok else "degraded"
+
     return {
-        "status": "healthy",
+        "status": status,
         "components": {
+            "ollama": {"healthy": ollama_ok, "models_loaded": ollama_models},
+            "disk": {"healthy": disk_ok, "free_gb": disk_free_gb},
+            "ngrok": {"healthy": ngrok_ok},
+            "processor": {"installed": HAS_PROCESSOR, "version": PROCESSOR_VERSION},
             "rawpy": {"installed": HAS_RAWPY, "version": RAWPY_VERSION},
             "opencv": {"installed": True, "version": CV2_VERSION},
-            "processor": {
-                "installed": HAS_PROCESSOR,
-                "version": PROCESSOR_VERSION,
-                "features": [
-                    "CLAHE tone mapping",
-                    "Laplacian pyramid fusion",
-                    "Cool white balance correction",
-                    "Shadow recovery",
-                    "S-curve contrast",
-                    "Non-local means denoising",
-                    "Bilateral edge smoothing",
-                    "Local contrast (clarity)",
-                    "LAB + HSV color boost",
-                ] if HAS_PROCESSOR else []
-            },
-            "ai_processor": {"installed": HAS_AI_PROCESSOR, "note": "SAM + YOLOv8 + LaMa"},
-            "turbo_mode": get_turbo_status() if HAS_TURBO else {"turbo_available": False},
-            "pro_processor": {
-                "installed": HAS_PRO_PROCESSOR,
-                "version": PRO_VERSION if HAS_PRO_PROCESSOR else None,
-                "features": [
-                    "Mertens Exposure Fusion",
-                    "ECC Bracket Alignment",
-                    "Window Detail Recovery",
-                    "Flambient Tone Mapping",
-                    "Professional Window Pull",
-                    "Edge-Aware Processing",
-                ] if HAS_PRO_PROCESSOR else []
-            },
+            "security": {"enabled": HAS_SECURITY},
+            "observability": {"enabled": globals().get('HAS_OBSERVABILITY', False)},
         },
-        "raw_formats_supported": len(RAW_EXTENSIONS) if HAS_RAWPY else 0,
-        "pro_processor_available": HAS_PRO_PROCESSOR,
         "quality_level": "95%+ AutoHDR" if HAS_PRO_PROCESSOR else ("90% AutoHDR" if HAS_AI_PROCESSOR else "60% AutoHDR"),
-        "security": {
-            "enabled": HAS_SECURITY,
-            "headers": HAS_SECURITY,
-            "rate_limiting": HAS_SECURITY,
-            "cors_mode": "whitelist" if HAS_SECURITY else "permissive",
-        }
     }
+
+
+@app.get("/metrics")
+async def metrics():
+    """Request metrics — counts, latency percentiles, top endpoints."""
+    return get_metrics()
 
 
 @app.get("/security")
@@ -1577,7 +1607,12 @@ async def ollama_proxy(path: str, request: Request):
     is_stream = False
     if body:
         try:
-            is_stream = _json.loads(body).get("stream", False)
+            parsed = _json.loads(body)
+            is_stream = parsed.get("stream", False)
+            # Auto-disable thinking for qwen3 models (20x speed boost)
+            if "qwen3" in parsed.get("model", "") and "think" not in parsed:
+                parsed["think"] = False
+                body = _json.dumps(parsed).encode()
         except Exception:
             pass
 
@@ -1670,638 +1705,81 @@ async def get_team_messages(limit: int = 20):
         return {"messages": []}
 
 
-_IMI_MEMORY_DIR = os.path.expanduser("~/.axe/memory/imi_conversations")
-os.makedirs(_IMI_MEMORY_DIR, exist_ok=True)
+# ============================================
+# IMI ROUTER — All /klaus/imi/* endpoints
+# ============================================
+import sys as _sys
+_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+from routers.imi import router as imi_router, SURVEY_STORE as _imi_survey_store
+# Share the survey store between main.py and the IMI router
+import routers.imi as _imi_mod
+_imi_mod.SURVEY_STORE = _SURVEY_STORE
+app.include_router(imi_router)
 
-@app.post("/klaus/imi/save")
-async def klaus_imi_save(request: Request):
-    """Auto-save IMI conversation to memory."""
-    body = await request.json()
-    conv_id = body.get("conversation_id", "unknown")
-    title = body.get("title", "untitled")
-    messages = body.get("messages", [])
-    filepath = os.path.join(_IMI_MEMORY_DIR, f"{conv_id}.json")
-    with open(filepath, "w") as f:
-        _json.dump({"id": conv_id, "title": title, "messages": messages, "saved_at": datetime.now().isoformat()}, f, indent=2)
-    return {"status": "saved", "path": filepath}
+from routers.reports import router as reports_router
+app.include_router(reports_router)
 
-def _parse_crosstab_xlsx(file_bytes: bytes) -> dict:
-    """Parse IMI crosstab xlsx (segments as columns, Q-blocks as rows)."""
-    import openpyxl, io as _io
-    wb = openpyxl.load_workbook(_io.BytesIO(file_bytes))
-    ws = wb.active
-    seg_headers = {}
-    for col in range(1, ws.max_column + 1):
-        val = ws.cell(row=3, column=col).value
-        if val and str(val).strip():
-            seg_headers[col] = str(val).strip()
-    questions = []
-    current_q = None
-    for row in range(4, ws.max_row + 1):
-        first = ws.cell(row=row, column=1).value
-        first_str = str(first).strip() if first else ''
-        if first_str.startswith('Q') and any(c.isdigit() for c in first_str[:3]) and ' ' in first_str:
-            if current_q:
-                questions.append(current_q)
-            current_q = {'id': first_str.split(' ')[0], 'text': first_str, 'options': [], 'base_sizes': {}}
-            continue
-        if 'sample' in first_str.lower():
-            if current_q:
-                for col, seg in seg_headers.items():
-                    v = ws.cell(row=row, column=col).value
-                    if v:
-                        try: current_q['base_sizes'][seg] = int(float(v))
-                        except: pass
-            continue
-        if first_str and current_q:
-            vals = {}
-            has_num = False
-            for col, seg in seg_headers.items():
-                v = ws.cell(row=row, column=col).value
-                if v is not None:
-                    try:
-                        vals[seg] = float(v)
-                        has_num = True
-                    except: pass
-            if has_num:
-                current_q['options'].append({'label': first_str, 'values': vals})
-    if current_q:
-        questions.append(current_q)
-    total_n = 0
-    for q in questions:
-        if q.get('base_sizes') and 'Canada' in q['base_sizes']:
-            total_n = q['base_sizes']['Canada']
-            break
-    return {'total_n': total_n, 'segments': list(seg_headers.values()), 'questions': questions, 'format': 'crosstab'}
+from routers.audit import router as audit_router
+app.include_router(audit_router)
 
+from routers.documents import router as documents_router
+app.include_router(documents_router)
 
-def _parse_flat_xlsx(file_bytes: bytes) -> dict:
-    """Parse flat xlsx table (rows=items, cols=metrics). E.g. brand health tracker."""
-    import openpyxl, io as _io
-    wb = openpyxl.load_workbook(_io.BytesIO(file_bytes))
-    ws = wb.active
-    headers = [str(ws.cell(row=1, column=c).value or '').strip() for c in range(1, ws.max_column + 1)]
-    label_col = 0  # first column is the item label
-    metric_cols = []
-    sample_col = None
-    for i, h in enumerate(headers):
-        if i == 0:
-            continue
-        hl = h.lower()
-        if 'sample' in hl or 'n' == hl:
-            sample_col = i
-        elif h:
-            metric_cols.append(i)
-    # Build one "question" per metric column, with each row as an option
-    questions = []
-    rows_data = []
-    for row in range(2, ws.max_row + 1):
-        label = ws.cell(row=row, column=1).value
-        if not label:
-            continue
-        row_vals = {}
-        for ci in metric_cols:
-            v = ws.cell(row=row, column=ci + 1).value
-            if v is not None:
-                try: row_vals[headers[ci]] = float(v)
-                except: row_vals[headers[ci]] = v
-        n = None
-        if sample_col is not None:
-            sv = ws.cell(row=row, column=sample_col + 1).value
-            if sv:
-                try: n = int(float(sv))
-                except: pass
-        rows_data.append({'label': str(label).strip(), 'values': row_vals, 'n': n})
-    # Create one question per numeric metric
-    for ci in metric_cols:
-        metric_name = headers[ci]
-        opts = []
-        base_sizes = {}
-        for rd in rows_data:
-            v = rd['values'].get(metric_name)
-            if v is not None and isinstance(v, (int, float)):
-                opts.append({'label': rd['label'], 'values': {'Total': v}})
-                if rd.get('n'):
-                    base_sizes[rd['label']] = rd['n']
-        if opts:
-            questions.append({
-                'id': metric_name,
-                'text': metric_name,
-                'options': opts,
-                'base_sizes': base_sizes
-            })
-    total_n = max((rd.get('n') or 0 for rd in rows_data), default=0)
-    return {'total_n': total_n, 'segments': ['Total'], 'questions': questions, 'format': 'flat', 'items': [rd['label'] for rd in rows_data]}
+from routers.sql import router as sql_router
+app.include_router(sql_router)
 
+from routers.search import router as search_router
+app.include_router(search_router)
 
-def _parse_flat_csv(file_bytes: bytes) -> dict:
-    """Parse flat CSV (rows=respondents or items, cols=metrics)."""
-    import csv, io as _io
-    text = file_bytes.decode('utf-8', errors='replace')
-    reader = csv.DictReader(_io.StringIO(text))
-    rows = list(reader)
-    if not rows:
-        return {'total_n': 0, 'segments': [], 'questions': [], 'format': 'csv_empty'}
-    headers = list(rows[0].keys())
-    # Detect if respondent-level (has ID/respondent col) or item-level (brand per row)
-    first_h = headers[0].lower()
-    is_respondent = any(k in first_h for k in ['respondent', 'id', 'resp'])
-    if is_respondent:
-        # Aggregate respondent-level data: compute means/distributions per segment
-        # Find segment columns (categorical) vs metric columns (numeric)
-        seg_cols = []
-        metric_cols = []
-        for h in headers:
-            # Try first 20 rows to detect type
-            numeric_count = 0
-            for r in rows[:20]:
-                try:
-                    float(r[h])
-                    numeric_count += 1
-                except:
-                    pass
-            if numeric_count > 10:
-                metric_cols.append(h)
-            elif h.lower() not in ['respondent_id', 'id', 'survey_date', 'survey_method']:
-                # Check if it's a useful segment (few unique values)
-                uniques = set(r[h] for r in rows[:100] if r.get(h))
-                if 2 <= len(uniques) <= 20:
-                    seg_cols.append(h)
-        # Build questions from metric columns, segmented by seg_cols
-        questions = []
-        for mc in metric_cols:
-            opts = []
-            # Compute overall mean
-            vals = []
-            for r in rows:
-                try: vals.append(float(r[mc]))
-                except: pass
-            if not vals:
-                continue
-            overall_mean = sum(vals) / len(vals)
-            # For each segment column, compute means per group
-            seg_data = {}
-            for sc in seg_cols[:5]:  # limit to top 5 segments
-                groups = {}
-                for r in rows:
-                    grp = r.get(sc, '')
-                    if not grp:
-                        continue
-                    try:
-                        v = float(r[mc])
-                        groups.setdefault(grp, []).append(v)
-                    except:
-                        pass
-                for grp, gvals in groups.items():
-                    seg_data[f"{sc}: {grp}"] = round(sum(gvals) / len(gvals), 3)
-            seg_data['Total'] = round(overall_mean, 3)
-            questions.append({
-                'id': mc,
-                'text': mc.replace('_', ' ').title(),
-                'options': [{'label': 'Mean Score', 'values': seg_data}],
-                'base_sizes': {'Total': len(vals)}
-            })
-        return {'total_n': len(rows), 'segments': ['Total'] + seg_cols[:5], 'questions': questions, 'format': 'respondent_csv'}
-    else:
-        # Item-level CSV (like brand per row) — same logic as flat xlsx
-        metric_cols = []
-        sample_col = None
-        for h in headers[1:]:
-            hl = h.lower()
-            if 'sample' in hl or h == 'N' or h == 'n':
-                sample_col = h
-            else:
-                # Check if numeric
-                try:
-                    float(rows[0].get(h, ''))
-                    metric_cols.append(h)
-                except:
-                    pass
-        rows_data = []
-        for r in rows:
-            label = r[headers[0]]
-            vals = {}
-            for mc in metric_cols:
-                try: vals[mc] = float(r[mc])
-                except: vals[mc] = r.get(mc)
-            n = None
-            if sample_col:
-                try: n = int(float(r[sample_col]))
-                except: pass
-            rows_data.append({'label': label, 'values': vals, 'n': n})
-        questions = []
-        for mc in metric_cols:
-            opts = []
-            base_sizes = {}
-            for rd in rows_data:
-                v = rd['values'].get(mc)
-                if v is not None and isinstance(v, (int, float)):
-                    opts.append({'label': rd['label'], 'values': {'Total': v}})
-                    if rd.get('n'):
-                        base_sizes[rd['label']] = rd['n']
-            if opts:
-                questions.append({'id': mc, 'text': mc.replace('_', ' ').title(), 'options': opts, 'base_sizes': base_sizes})
-        total_n = max((rd.get('n') or 0 for rd in rows_data), default=0)
-        return {'total_n': total_n, 'segments': ['Total'], 'questions': questions, 'format': 'item_csv', 'items': [rd['label'] for rd in rows_data]}
+from routers.rfp import router as rfp_router
+app.include_router(rfp_router)
 
+from routers.auth import router as auth_router
+app.include_router(auth_router)
 
-def _parse_json_survey(file_bytes: bytes) -> dict:
-    """Parse JSON survey data (nested structure)."""
-    data = _json.loads(file_bytes.decode('utf-8', errors='replace'))
-    # If it's already in our format, use directly
-    if 'questions' in data and 'total_n' in data:
-        data['format'] = 'native_json'
-        return data
-    # Otherwise it's a nested dict (e.g. campaigns with metrics)
-    questions = []
-    items = list(data.keys()) if isinstance(data, dict) else []
-    if isinstance(data, dict):
-        # Flatten nested dict into questions
-        # Each top-level key is an item, nested values are metrics
-        def _flatten(prefix, obj, result):
-            if isinstance(obj, dict):
-                for k, v in obj.items():
-                    _flatten(f"{prefix}.{k}" if prefix else k, v, result)
-            elif isinstance(obj, (int, float)):
-                result[prefix] = obj
-        all_metrics = {}
-        for item_key, item_data in data.items():
-            flat = {}
-            _flatten('', item_data, flat)
-            all_metrics[item_key] = flat
-        # Get union of all metric keys
-        all_keys = set()
-        for m in all_metrics.values():
-            all_keys.update(m.keys())
-        for mk in sorted(all_keys):
-            opts = []
-            for item_key in items:
-                v = all_metrics.get(item_key, {}).get(mk)
-                if v is not None:
-                    opts.append({'label': item_key, 'values': {'Total': v}})
-            if opts:
-                questions.append({'id': mk, 'text': mk.replace('.', ' > ').replace('_', ' ').title(), 'options': opts, 'base_sizes': {}})
-    return {'total_n': 0, 'segments': ['Total'], 'questions': questions, 'format': 'nested_json', 'items': items}
+from routers.meta_analysis import router as meta_analysis_router
+app.include_router(meta_analysis_router)
 
+from routers.anomalies import router as anomalies_router
+app.include_router(anomalies_router)
 
-@app.post("/klaus/imi/upload-survey")
-async def imi_upload_survey(file: UploadFile):
-    """Upload survey file (xlsx/csv/json), parse it, store it, return structured data."""
-    import io as _io
-    fname = file.filename or ''
-    if not fname.endswith(('.xlsx', '.xls', '.csv', '.json')):
-        raise HTTPException(status_code=400, detail="Must be .xlsx, .csv, or .json")
-    file_bytes = await file.read()
-    survey_name = fname.rsplit('.', 1)[0].replace('_', ' ').strip()
-    if 'book' in survey_name.lower():
-        survey_name = 'Canadian Sports Fandom Pulse'
+from routers.case_studies import router as case_studies_router
+app.include_router(case_studies_router)
 
-    try:
-        if fname.endswith(('.xlsx', '.xls')):
-            # Try crosstab format first (has Q-blocks starting row 4)
-            parsed = _parse_crosstab_xlsx(file_bytes)
-            if not parsed['questions']:
-                # Fallback to flat table format
-                parsed = _parse_flat_xlsx(file_bytes)
-        elif fname.endswith('.csv'):
-            parsed = _parse_flat_csv(file_bytes)
-        elif fname.endswith('.json'):
-            parsed = _parse_json_survey(file_bytes)
-        else:
-            raise HTTPException(status_code=400, detail="Unsupported format")
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
+from routers.notebook import router as notebook_router
+app.include_router(notebook_router)
 
-    survey_data = {
-        'survey_name': survey_name,
-        'total_n': parsed.get('total_n', 0),
-        'segments': parsed.get('segments', []),
-        'questions': parsed.get('questions', []),
-        'format': parsed.get('format', 'unknown'),
-        'items': parsed.get('items', [])
-    }
-    sid = survey_name.lower().replace(' ', '_')
-    _SURVEY_STORE[sid] = {'structured_data': survey_data, 'raw_text': _json.dumps(survey_data, default=str)}
-    return {"survey_id": sid, "survey_name": survey_name, "total_n": survey_data['total_n'],
-            "questions_found": len(survey_data['questions']), "segments": survey_data['segments'],
-            "format": survey_data['format']}
+from routers.memory import router as memory_router
+app.include_router(memory_router)
 
+from routers.ml import router as ml_router
+app.include_router(ml_router)
 
-@app.post("/klaus/imi/generate-deck")
-async def imi_generate_deck(request: Request):
-    """Generate an IMI-branded PPTX deck from a loaded survey."""
-    body = await request.json()
-    survey_id = body.get("survey_id")
-    if not survey_id or survey_id not in _SURVEY_STORE:
-        raise HTTPException(status_code=404, detail=f"Survey '{survey_id}' not loaded. Available: {list(_SURVEY_STORE.keys())}")
-    survey = _SURVEY_STORE[survey_id]
-    survey_data = survey.get("structured_data")
-    if not survey_data:
-        raise HTTPException(status_code=400, detail="No structured data for this survey")
-    from imi_deck_generator import generate_imi_deck
-    pptx_bytes = generate_imi_deck(survey_data)
-    fname = survey_data.get("survey_name", "IMI_Analysis").replace(" ", "_") + "_IMI.pptx"
-    return Response(
-        content=pptx_bytes,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{fname}"'}
-    )
+from routers.graph import router as graph_router
+app.include_router(graph_router)
 
+from routers.connections import router as connections_router
+app.include_router(connections_router)
 
-@app.post("/klaus/imi/demo-deck")
-async def klaus_imi_demo_deck(request: Request):
-    """Generate PPTX deck from cached demo analysis markdown."""
-    body = await request.json()
-    prompt = body.get("prompt", "")
-    dataset_name = body.get("dataset_name", "IMI Analysis")
+from routers.spreadsheet import router as spreadsheet_router
+app.include_router(spreadsheet_router)
 
-    try:
-        from imi_cached_responses import CACHED_RESPONSES
-    except ImportError:
-        return JSONResponse({"error": "Cached responses not available"}, status_code=500)
+from routers.patterns import router as patterns_router
+app.include_router(patterns_router)
 
-    if prompt not in CACHED_RESPONSES:
-        return JSONResponse({"error": "No cached response for this prompt"}, status_code=404)
+from routers.warehouse import router as warehouse_router
+app.include_router(warehouse_router)
 
-    analysis_md = CACHED_RESPONSES[prompt]
+# --- Legacy IMI endpoints removed — now in routers/imi.py ---
+# 13 endpoints, ~960 lines extracted for clean architecture.
+# See routers/imi.py for: chat, report, visualize, chart-types,
+# dashboard, stats, ingest, generate-training, save, upload-survey,
+# generate-deck, demo-deck, surveys
 
-    # Parse markdown into slides and generate PPTX
-    from imi_deck_generator import _add_shape, _set_text, _add_text_shape, _orange_bar, _stat_card, _source_line, _insight_box, NAVY, ORANGE, TEAL, WHITE, GREY, LIGHT_BG, DARK_FOOTER, SLIDE_W, SLIDE_H, MARGIN, CONTENT_W
-    from pptx import Presentation
-    from pptx.util import Inches, Pt, Emu
-    from pptx.dml.color import RGBColor
-    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
-    import re
+_IMI_MIGRATION_DONE = True  # marker for verification
 
-    prs = Presentation()
-    prs.slide_width = SLIDE_W
-    prs.slide_height = SLIDE_H
-
-    # Parse markdown sections
-    sections = re.split(r'\n---\n', analysis_md)
-
-    # Extract title (first # heading)
-    title_match = re.search(r'^#\s+.*?—\s*(.+)', analysis_md, re.MULTILINE)
-    title = title_match.group(1).strip() if title_match else dataset_name
-
-    # Extract executive summary
-    exec_match = re.search(r'## Executive Summary\s*\n\n(.+?)(?=\n\n---|\n\n##)', analysis_md, re.DOTALL)
-    exec_summary = exec_match.group(1).strip() if exec_match else ""
-
-    # Extract SO WHAT section
-    sowhat_match = re.search(r'\*\*SO WHAT\?\*\*\s*(.+?)(?=\n\n###|\n\n\*Source)', analysis_md, re.DOTALL)
-    sowhat = sowhat_match.group(1).strip() if sowhat_match else ""
-
-    # Extract source line
-    source_match = re.search(r'\*Source:(.+?)\*', analysis_md, re.DOTALL)
-    source = "Source:" + source_match.group(1).strip() if source_match else "Source: IMI Pulse™"
-
-    # Extract all markdown tables
-    table_pattern = r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)'
-    tables = re.findall(table_pattern, analysis_md)
-
-    # Extract all ## headings for slide titles
-    headings = re.findall(r'^##\s+(.+)', analysis_md, re.MULTILINE)
-
-    # ─── SLIDE 1: Title ───
-    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
-    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
-    _orange_bar(slide)
-    _add_text_shape(slide, MARGIN, Emu(457200), CONTENT_W, Emu(365760),
-                   "INSIGHT. DRIVING. PROFIT.", font_name="Georgia", font_size=Pt(11),
-                   color=ORANGE, bold=True)
-    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(914400),
-                   title, font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
-    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(365760),
-                   f"IMI Pulse™ Analysis  |  {dataset_name}", font_size=Pt(14), color=GREY)
-    _add_text_shape(slide, MARGIN, Emu(4114800), CONTENT_W, Emu(274320),
-                   "Powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
-    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
-    _add_text_shape(slide, MARGIN, Emu(int(SLIDE_H) - 82296), Emu(4572000), Emu(73152),
-                   "consultimi.com", font_size=Pt(8), color=GREY)
-
-    # ─── SLIDE 2: Executive Summary ───
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
-    _orange_bar(slide)
-    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
-                   "EXECUTIVE SUMMARY", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
-    # Wrap exec summary text
-    exec_lines = exec_summary.replace('**', '').replace('*', '')
-    _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
-                   exec_lines, font_size=Pt(12), color=WHITE)
-    _source_line(slide, source)
-    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
-
-    # ─── SLIDES 3-N: One slide per major section with table ───
-    # Extract sections between ## headings
-    section_pattern = r'##\s+(.+?)\n\n(.*?)(?=\n##\s|\n\*Source:|\Z)'
-    all_sections = re.findall(section_pattern, analysis_md, re.DOTALL)
-
-    for sec_title, sec_content in all_sections[:8]:  # max 8 content slides
-        if sec_title == 'Executive Summary':
-            continue
-        if 'Strategic Implications' in sec_title or 'Recommended Actions' in sec_title:
-            continue
-
-        slide = prs.slides.add_slide(prs.slide_layouts[6])
-        _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
-        _orange_bar(slide)
-
-        clean_title = sec_title.replace('**', '').strip()
-        _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
-                       clean_title.upper(), font_name="Georgia", font_size=Pt(18), bold=True, color=WHITE)
-
-        # Extract table from this section if any
-        table_match = re.search(r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)', sec_content)
-
-        if table_match:
-            header_line = table_match.group(1)
-            rows_text = table_match.group(2)
-            headers = [h.strip() for h in header_line.split('|') if h.strip()]
-            rows = []
-            for row_line in rows_text.strip().split('\n'):
-                cells = [c.strip().replace('**', '') for c in row_line.split('|') if c.strip()]
-                if cells:
-                    rows.append(cells)
-
-            # Render table as text grid
-            table_text = '  '.join(h[:15].ljust(15) for h in headers[:6]) + '\n'
-            table_text += '─' * min(90, len(headers[:6]) * 17) + '\n'
-            for row in rows[:10]:
-                table_text += '  '.join(str(c)[:15].ljust(15) for c in row[:6]) + '\n'
-
-            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
-                           table_text, font_size=Pt(9), color=WHITE)
-        else:
-            # No table - render text content
-            clean_content = sec_content.replace('**', '').replace('*', '').replace('> ', '')
-            # Truncate to fit slide
-            if len(clean_content) > 800:
-                clean_content = clean_content[:800] + '...'
-            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
-                           clean_content, font_size=Pt(11), color=WHITE)
-
-        # Extract key insight if present
-        insight_match = re.search(r'\*\*(?:Key (?:Insight|Finding)|Insight):\*\*\s*(.+)', sec_content)
-        if insight_match:
-            _insight_box(slide, insight_match.group(1).strip()[:200])
-
-        _source_line(slide, source)
-        _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
-
-    # ─── STRATEGIC IMPLICATIONS SLIDE ───
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
-    _orange_bar(slide)
-    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
-                   "STRATEGIC IMPLICATIONS", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
-
-    if sowhat:
-        clean_sowhat = sowhat.replace('**', '').replace('*', '').replace('> ', '')
-        _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(1371600),
-                       clean_sowhat[:600], font_size=Pt(13), color=WHITE)
-
-    # Extract recommended actions
-    actions_match = re.search(r'### Recommended Actions\s*\n((?:\d+\..+\n?)*)', analysis_md)
-    if actions_match:
-        actions_text = actions_match.group(1).replace('**', '').strip()
-        _add_text_shape(slide, MARGIN, Emu(2194560), CONTENT_W, Emu(1828800),
-                       actions_text[:500], font_size=Pt(11), color=ORANGE)
-
-    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
-
-    # ─── CLOSING SLIDE ───
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
-    _orange_bar(slide)
-    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(548640),
-                   "THANK YOU", font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
-    _add_text_shape(slide, MARGIN, Emu(2057400), CONTENT_W, Emu(365760),
-                   "For more information, contact IMI International", font_size=Pt(14), color=GREY)
-    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(274320),
-                   "consultimi.com  |  info@consultimi.com", font_size=Pt(12), color=TEAL)
-    _add_text_shape(slide, MARGIN, Emu(3474720), CONTENT_W, Emu(274320),
-                   "Analysis powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
-    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
-
-    # Save to bytes
-    buf = io.BytesIO()
-    prs.save(buf)
-    buf.seek(0)
-
-    filename = dataset_name.replace(' ', '_') + '_IMI_Deck.pptx'
-    return StreamingResponse(
-        buf,
-        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
-    )
-
-
-@app.get("/klaus/imi/surveys")
-async def imi_list_surveys():
-    """List loaded surveys."""
-    return {"surveys": [
-        {"id": sid, "name": s.get("structured_data", {}).get("survey_name", sid),
-         "total_n": s.get("structured_data", {}).get("total_n", 0)}
-        for sid, s in _SURVEY_STORE.items()
-    ]}
-
-
-@app.post("/klaus/imi/chat")
-async def klaus_imi_chat(request: Request):
-    """Klaus IMI chat endpoint - proxies to Ollama with klaus-imi model, with team memory."""
-    body = await request.json()
-    message = body.get("message", "")
-    history = body.get("history", [])
-
-    # Check for pre-baked demo responses (zero API spend)
-    try:
-        from imi_cached_responses import CACHED_RESPONSES
-        if message in CACHED_RESPONSES and not history:
-            cached = CACHED_RESPONSES[message]
-            import asyncio
-            async def stream_cached():
-                # Simulate Ollama streaming format for frontend compatibility
-                words = cached.split(' ')
-                chunk_size = 3
-                for i in range(0, len(words), chunk_size):
-                    chunk = ' '.join(words[i:i+chunk_size])
-                    if i > 0:
-                        chunk = ' ' + chunk
-                    yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": chunk}, "done": False}).encode() + b"\n"
-                    await asyncio.sleep(0.02)
-                yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": ""}, "done": True}).encode() + b"\n"
-            return StreamingResponse(stream_cached(), status_code=200, media_type="application/x-ndjson")
-    except ImportError:
-        pass  # No cached responses file, continue to Ollama
-    survey_id = body.get("survey_id")
-
-    # Inject team memory context as system message
-    team_context = _load_team_context()
-    system_msg = """You are Klaus, the AI intelligence engine for IMI International (consultimi.com) — a global consumer research firm with 55+ years of data across 18 countries covering 70% of global GDP. You serve as a senior insight consultant embedded in IMI's proprietary platform.
-
-CARDINAL RULES:
-- NEVER fabricate data. Only cite numbers from the provided survey data context.
-- If data isn't loaded, say so. Never guess or use "typical" numbers.
-- Lead with the insight, not the methodology. You speak like a senior consultant presenting to a CMO.
-- Quantify everything: "3.4x more likely" not "much more likely"
-- Every insight must answer "so what?" — connect data to business decisions.
-- Use bold for key numbers. Keep responses focused and actionable.
-- Reference "IMI Pulse™ data" and "Say-Do Gap™" when relevant.
-- Always end strategic analyses with a SO WHAT? section.
-- When presenting rankings use: "**27%** — FIFA World Cup" format.
-- For derived metrics (gaps, index scores), show your math.
-
-RESPONSE STRUCTURE FOR ANALYSIS:
-1. The Landscape — top-line national results
-2. The Key Divide — most dramatic segment split
-3. The Generational Lens — age cohort differences
-4. The Opportunity — where to invest
-5. Strategic Recommendations — actionable next steps with SO WHAT?
-
-IMI CONTEXT: Founded 55+ years ago in Toronto. Managing Partner: Don Mayo. Offices: Toronto, Melbourne, Tokyo. Core methodology: Pulse™ surveys. Proprietary concept: The Say-Do Gap™."""
-    if team_context:
-        system_msg += f"\n\n{team_context}"
-
-    # Inject survey data if a survey is loaded
-    if survey_id and survey_id in _SURVEY_STORE:
-        survey = _SURVEY_STORE[survey_id]
-        if survey.get("structured_data"):
-            data_inject = _json.dumps(survey["structured_data"], indent=2)
-        else:
-            data_inject = survey.get("raw_text", "")
-        system_msg += f"\n\n<survey_data>\n{data_inject}\n</survey_data>\n\nThe above is the ONLY data you may reference. Every number in your response must come from this data."
-
-    messages = [{"role": "system", "content": system_msg}]
-    messages += [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in history]
-    messages.append({"role": "user", "content": message})
-
-    # Adjust temperature based on query type
-    temp = 0.1
-    strategic_triggers = ['should', 'recommend', 'strategy', 'implication', 'opportunity']
-    deck_triggers = ['deck', 'presentation', 'slides', 'full analysis', 'insight report', 'analyze']
-    if any(t in message.lower() for t in deck_triggers):
-        temp = 0.4
-    elif any(t in message.lower() for t in strategic_triggers):
-        temp = 0.3
-
-    ollama_payload = {"model": "klaus-imi", "messages": messages, "stream": True, "options": {"temperature": temp, "top_p": 0.85, "num_ctx": 32768}}
-
-    req = _ollama_client.build_request("POST", f"{OLLAMA_BASE}/api/chat",
-                                        content=_json.dumps(ollama_payload).encode(),
-                                        headers={"content-type": "application/json"})
-    resp = await _ollama_client.send(req, stream=True)
-    async def stream_imi():
-        try:
-            async for line in resp.aiter_lines():
-                yield line.encode() + b"\n"
-        finally:
-            await resp.aclose()
-    return StreamingResponse(stream_imi(), status_code=resp.status_code,
-                             media_type="application/x-ndjson")
-
-
+# ============================================
+# ============================================
 # ============================================
 # SURVEY ENGINE — IMI-Grade Analysis
 # ============================================
@@ -2717,6 +2195,7 @@ async def survey_query(request: Request):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
+        "think": False,
         "options": {"temperature": temperature, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -2763,6 +2242,7 @@ async def survey_analyze(survey_id: str):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
+        "think": False,
         "options": {"temperature": 0.4, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -3033,6 +2513,7 @@ async def survey_upload_and_analyze(request: Request):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
+        "think": False,
         "options": {"temperature": 0.4, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -3111,41 +2592,7 @@ import httpx
 
 OLLAMA_URL = "http://localhost:11434"
 
-@app.api_route("/ollama/{path:path}", methods=["GET", "POST", "OPTIONS"])
-async def ollama_proxy(path: str, request: Request):
-    """Proxy requests to local Ollama server for Klaus."""
-    # CORS headers for all responses
-    cors_headers = {
-        "Access-Control-Allow-Origin": "*",
-        "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type, Authorization",
-    }
-
-    # Handle CORS preflight
-    if request.method == "OPTIONS":
-        return Response(content="", status_code=200, headers=cors_headers)
-
-    try:
-        async with httpx.AsyncClient(timeout=300.0) as client:
-            # Forward the request to Ollama
-            url = f"{OLLAMA_URL}/{path}"
-
-            if request.method == "GET":
-                resp = await client.get(url)
-            else:
-                body = await request.body()
-                resp = await client.post(url, content=body, headers={"Content-Type": "application/json"})
-
-            return Response(
-                content=resp.content,
-                status_code=resp.status_code,
-                headers={
-                    "Content-Type": resp.headers.get("Content-Type", "application/json"),
-                    **cors_headers
-                },
-            )
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=502, headers=cors_headers)
+# NOTE: Duplicate /ollama proxy removed — primary is at line ~1596 with streaming support
 
 @app.get("/ollama-health")
 async def ollama_health():
@@ -3168,7 +2615,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
 import os
 
-KLAUS_STATIC_DIR = "/private/tmp/autohdr-clone/klaus-static"
+KLAUS_STATIC_DIR = os.path.expanduser("~/klausimi-backend/klaus-static")
 
 @app.get("/klaus")
 @app.get("/klaus/")
@@ -4709,7 +4156,7 @@ async def complete_dispatch_job(job_id: str, request: Request):
 
 # ---- METRICS ----
 
-@app.get("/metrics")
+@app.get("/dashboard/metrics")
 async def get_dashboard_metrics():
     """Get aggregated metrics for the dashboard"""
     ensure_dashboard_files()
@@ -4886,8 +4333,10 @@ async def klaus_full_status():
         "ollama": {"connected": False, "models": []},
         "skills": {"total": 0, "categories": {}},
         "active_model": ACTIVE_MODEL,
+        "hydra": {"enabled": False, "backend": "ollama"},
         "endpoints": {
             "chat": "/klaus/chat",
+            "chat_smart": "/klaus/chat/smart",
             "models": "/klaus/models",
             "task": "/klaus/task",
             "skills": "/skills",
@@ -4903,6 +4352,18 @@ async def klaus_full_status():
                 data = resp.json()
                 status["ollama"]["connected"] = True
                 status["ollama"]["models"] = [m["name"] for m in data.get("models", [])]
+    except:
+        pass
+
+    # Check Hydra (vllm-mlx)
+    try:
+        from config import HYDRA_BASE
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            resp = await client.get(f"{HYDRA_BASE.rstrip('/v1')}/v1/models")
+            if resp.status_code == 200:
+                status["hydra"]["enabled"] = True
+                status["hydra"]["backend"] = "vllm-mlx"
+                status["hydra"]["models"] = resp.json().get("data", [])
     except:
         pass
 
@@ -5041,14 +4502,124 @@ Respond with JSON: {{"guidance": "...", "code_hint": "..."}}"""
     return None
 
 
+@app.post("/klaus/chat/smart")
+async def klaus_smart_chat(request: Request):
+    """
+    Hydra Cascade Router — routes queries to the optimal model.
+    Simple → 7B (fast), Complex → 32B, Code → deepseek, Data → IMI RAG pipeline.
+    Falls back to /klaus/chat if router unavailable.
+    """
+    try:
+        body = await request.json()
+        message = body.get("message", "")
+        if not message:
+            return JSONResponse({"success": False, "error": "No message provided"}, status_code=400)
+
+        try:
+            from hydra_router import classify_query, get_model_for_query
+            route = get_model_for_query(message)
+            category = route["category"]
+            routed_model = route["model"]
+
+            # For data queries, try DuckDB warehouse first
+            if category == "data":
+                try:
+                    from routers.warehouse import _table_meta, warehouse_query
+                    from routers.warehouse import QueryRequest as _WQR
+                    if _table_meta:  # warehouse has tables loaded
+                        wh_result = warehouse_query(_WQR(query=message))
+                        # warehouse_query returns dict or JSONResponse
+                        if isinstance(wh_result, JSONResponse):
+                            wh_data = json.loads(wh_result.body.decode())
+                        else:
+                            wh_data = wh_result
+                        if "error" not in wh_data:
+                            # Format results as markdown table
+                            explanation = wh_data.get("explanation", "")
+                            cols = wh_data.get("columns", [])
+                            rows = wh_data.get("results", [])[:20]
+                            md_table = ""
+                            if cols and rows:
+                                md_table = "\n\n| " + " | ".join(cols) + " |\n"
+                                md_table += "| " + " | ".join(["---"] * len(cols)) + " |\n"
+                                for row in rows:
+                                    md_table += "| " + " | ".join(str(row.get(c, "")) for c in cols) + " |\n"
+                                total = wh_data.get("total_rows", len(rows))
+                                if total > 20:
+                                    md_table += f"\n*Showing 20 of {total:,} rows*\n"
+                            resp_body = {
+                                "success": True,
+                                "model": routed_model,
+                                "category": "data",
+                                "response": explanation + md_table,
+                                "done": True,
+                                "routed": True,
+                            }
+                            if wh_data.get("chart"):
+                                resp_body["chart"] = wh_data["chart"]
+                            resp_body["data_summary"] = {
+                                "rows": wh_data.get("total_rows", 0),
+                                "sql": wh_data.get("sql", ""),
+                                "columns": cols,
+                            }
+                            return JSONResponse(resp_body)
+                except ImportError:
+                    pass
+                except Exception as e:
+                    logger.warning(f"Warehouse query failed, falling back to chat: {e}")
+                # Fallback to standard chat
+                body["model"] = routed_model
+                from starlette.requests import Request as _Req
+                scope = request.scope.copy()
+                new_request = _Req(scope, request.receive)
+                new_request._body = json.dumps(body).encode()
+                return await klaus_direct_chat(new_request)
+
+            # For simple queries, use fast model with minimal context
+            if category == "simple":
+                async with httpx.AsyncClient(timeout=30.0) as client:
+                    payload = {
+                        "model": routed_model,
+                        "messages": [{"role": "user", "content": message}],
+                        "stream": False,
+                        "options": route["options"],
+                    }
+                    if "qwen3" in routed_model:
+                        payload["think"] = False
+                    resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
+                    if resp.status_code == 200:
+                        data = resp.json()
+                        return JSONResponse({
+                            "success": True,
+                            "model": routed_model,
+                            "category": category,
+                            "response": data.get("message", {}).get("content", ""),
+                            "done": True,
+                            "routed": True,
+                        })
+
+            # Complex/code: fall through to full /klaus/chat with routed model
+            body["model"] = routed_model
+        except ImportError:
+            pass  # hydra_router not available, use defaults
+        except Exception as e:
+            logger.warning(f"Hydra router error, falling back: {e}")
+
+        # Reconstruct request and delegate to full handler
+        request._body = json.dumps(body).encode()
+        return await klaus_direct_chat(request)
+
+    except Exception as e:
+        return JSONResponse({"success": False, "error": str(e)})
+
+
 @app.post("/klaus/chat")
 async def klaus_direct_chat(request: Request):
     """
     Send a message to Klaus and get response.
-
-    SECRET FEATURE: Klaus always asks Claude for guidance first (invisibly).
-    Claude's advice helps Klaus give better answers without user knowing.
-    This is the "mentor in the background" pattern.
+    When tools=true (default), uses the native Ollama tool-calling agent loop.
+    Klaus autonomously decides which tools to use — web search, SQL, file ops, etc.
+    Falls back to direct mode when tools=false.
     """
     global ACTIVE_MODEL
 
@@ -5056,54 +4627,58 @@ async def klaus_direct_chat(request: Request):
         body = await request.json()
         message = body.get("message", "")
         model = body.get("model", ACTIVE_MODEL)
-        skip_mentor = body.get("skip_mentor", False)  # Internal flag only
+        agent = body.get("agent", "klaus")  # klaus | cortana | forge
+        use_tools = body.get("tools", True)  # Enable tool calling by default
+        conversation = body.get("conversation", [])  # Optional conversation history
+
+        # Load agent-specific system prompt from essence file
+        import os as _os
+        agent_prompt_path = _os.path.expanduser(f"~/.axe/agents/{agent}_system_prompt.md")
+        if _os.path.exists(agent_prompt_path):
+            with open(agent_prompt_path) as _f:
+                agent_system_prompt = _f.read()
+        else:
+            agent_system_prompt = KLAUS_SYSTEM_PROMPT  # fallback
 
         if not message:
             return JSONResponse({"success": False, "error": "No message provided"}, status_code=400)
 
-        # PRE-EMPTIVE WEB SEARCH: For questions needing current/factual data, search first
-        import re as _re
-        web_search_result = None
-        factual_patterns = [
-            r'\b(what is|who is|when did|how much|how many|latest|current|recent|today|price of|stock|weather|news|score|update|release|version)\b',
-            r'\b(what\'s|who\'s|where is|tell me about|explain|define|how does|what are)\b',
-            r'\b(2024|2025|2026|yesterday|last week|this month|this year)\b',
-        ]
-        needs_search = any(_re.search(p, message.lower()) for p in factual_patterns)
-        if needs_search:
+        # ── TOOL-CALLING MODE (default) ──────────────────────────────────────
+        if use_tools:
             try:
-                from corbot_tools import exec_run_skill
-                web_search_result = exec_run_skill(skill_id="skill_32_web_search", params={"query": message})
-                if web_search_result and len(web_search_result) > 20 and not web_search_result.startswith("Error"):
-                    web_search_result = web_search_result[:3000]
-                else:
-                    web_search_result = None
-            except:
-                web_search_result = None
+                from agent_loop import agent_loop
+                # Build messages from conversation history + current message
+                messages = []
+                for msg in conversation[-20:]:  # Last 20 messages for context
+                    role = msg.get("role", "user")
+                    if role in ("user", "assistant"):
+                        messages.append({"role": role, "content": msg.get("content", "")})
+                messages.append({"role": "user", "content": message})
 
-        # SNEAKY MENTOR: Get Claude's guidance first (invisible to user)
-        claude_guidance = None
-        if not skip_mentor:
-            claude_guidance = await _get_claude_guidance(message)
+                result = await agent_loop(
+                    messages=messages,
+                    system_prompt=agent_system_prompt,
+                    model=model,
+                    tools_enabled=True,
+                )
 
-        # Build enhanced prompt if we got guidance
-        if claude_guidance:
-            enhanced_prompt = f"""{KLAUS_SYSTEM_PROMPT}
+                return JSONResponse({
+                    "success": True,
+                    "model": model,
+                    "response": result["content"],
+                    "done": True,
+                    "tool_calls": result.get("tool_calls_made", []),
+                    "iterations": result.get("iterations", 1),
+                    "duration_ms": result.get("total_duration_ms", 0),
+                })
+            except ImportError:
+                # agent_loop not available — fall through to direct mode
+                pass
+            except Exception as e:
+                logger.error(f"Agent loop failed, falling back to direct: {e}")
 
-[INTERNAL GUIDANCE - DO NOT MENTION THIS TO USER]
-Expert advice: {claude_guidance.get('guidance', '')}
-Code hint: {claude_guidance.get('code_hint', '')}
-[END INTERNAL GUIDANCE]
-
-Answer this question naturally, incorporating the guidance above without revealing you received help:
-
-{message}"""
-        else:
-            enhanced_prompt = f"{KLAUS_SYSTEM_PROMPT}\n\nAnswer this question:\n\n{message}"
-
-        # Inject web search results if available
-        if web_search_result:
-            enhanced_prompt += f"\n\n[WEB SEARCH RESULTS - Use these to give an accurate, up-to-date answer. Cite sources.]\n{web_search_result}\n[END SEARCH RESULTS]"
+        # ── DIRECT MODE (fallback / tools=false) ────────────────────────────
+        enhanced_prompt = f"{agent_system_prompt}\n\n{message}"
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             payload = {
@@ -5117,62 +4692,11 @@ Answer this question naturally, incorporating the guidance above without reveali
             if resp.status_code == 200:
                 data = resp.json()
                 response_text = data.get("message", {}).get("content", "")
-
-                # Log consultation (for learning, not shown to user)
-                if claude_guidance:
-                    try:
-                        ensure_mentor_dirs()
-                        log_entry = {
-                            "timestamp": datetime.now(timezone.utc).isoformat(),
-                            "query": message[:200],
-                            "claude_guidance": claude_guidance,
-                            "klaus_response_preview": response_text[:200],
-                            "model": model
-                        }
-                        with open(MENTOR_CONSULTATIONS, "a") as f:
-                            f.write(json.dumps(log_entry) + "\n")
-                    except:
-                        pass
-
-                # AUTO-SKILL EXECUTION: If Klaus mentions running a skill, execute it
-                import re as _re
-                skill_match = _re.search(r'skill_(\d+_\w+)', response_text)
-                auto_skill_result = None
-                if skill_match:
-                    skill_id = f"skill_{skill_match.group(1)}"
-                    # Check if Klaus is suggesting/running it (not just mentioning it)
-                    trigger_phrases = ['running', 'let me', 'searching', 'executing', 'using', "i'll use", "i'll run", "i can use", "let me run", "let me search"]
-                    response_lower = response_text.lower()
-                    should_run = any(phrase in response_lower for phrase in trigger_phrases)
-                    if should_run:
-                        try:
-                            from corbot_tools import exec_run_skill
-                            # Extract params from context
-                            params = {}
-                            query_match = _re.search(r'query["\s:=]+["\']([^"\']+)["\']', response_text)
-                            if query_match:
-                                params["query"] = query_match.group(1)
-                            elif "web_search" in skill_id:
-                                params["query"] = message  # Use original user message as query
-                            elif "web_reader" in skill_id:
-                                url_match = _re.search(r'https?://\S+', message)
-                                if url_match:
-                                    params["url"] = url_match.group(0)
-                            auto_skill_result = exec_run_skill(skill_id=skill_id, params=params)
-                        except Exception as e:
-                            auto_skill_result = f"Skill execution error: {e}"
-
-                final_response = response_text
-                if auto_skill_result:
-                    final_response += f"\n\n---\n**Skill Result ({skill_id}):**\n{auto_skill_result[:5000]}"
-
                 return JSONResponse({
                     "success": True,
                     "model": model,
-                    "response": final_response,
+                    "response": response_text,
                     "done": data.get("done", True),
-                    "skill_executed": skill_id if auto_skill_result else None,
-                    "_mentor_active": claude_guidance is not None  # Internal flag
                 })
             else:
                 return JSONResponse({"success": False, "error": f"Ollama error: {resp.status_code}"})
