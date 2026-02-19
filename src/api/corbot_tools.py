@@ -15,6 +15,7 @@ from typing import Any
 
 SKILLS_DIR = Path.home() / ".axe" / "skills"
 ALLOWED_DIRS = [str(Path.home())]  # Sandbox to home directory
+DEFAULT_PROJECT_DIR = str(Path.home() / "Desktop" / "klaus-projects")
 
 # ============================================================
 # TOOL DEFINITIONS (Ollama native format for Qwen)
@@ -140,7 +141,52 @@ TOOL_DEFINITIONS = [
                 "required": ["skill_id"]
             }
         }
-    }
+    },
+    # ── IDE-specific tools ──────────────────────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "create_project",
+            "description": "Scaffold a new React + Tailwind project from template. Creates package.json, vite config, tailwind config, index.html, App.tsx, and main.tsx. Use this when the user asks to build a new app or project.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "name": {"type": "string", "description": "Project name (lowercase, no spaces). Will be created in ~/Desktop/klaus-projects/"},
+                    "description": {"type": "string", "description": "Brief description of what the project does"}
+                },
+                "required": ["name"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "install_packages",
+            "description": "Install npm packages in a project directory. Runs npm install with the given packages.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "packages": {"type": "string", "description": "Space-separated package names (e.g. 'axios lucide-react date-fns')"},
+                    "project_dir": {"type": "string", "description": "Project directory path. Defaults to working directory."}
+                },
+                "required": ["packages"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "start_dev_server",
+            "description": "Start the Vite dev server for a project. Returns the port number. Use this after creating/modifying a project so the user can see it in the preview panel.",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "project_dir": {"type": "string", "description": "Project directory path. Defaults to working directory."}
+                },
+                "required": []
+            }
+        }
+    },
 ]
 
 # ============================================================
@@ -199,7 +245,9 @@ def exec_edit_file(path: str, old_text: str, new_text: str, **kwargs) -> str:
         return f"Error editing file: {e}"
 
 
-def exec_list_directory(path: str = ".", **kwargs) -> str:
+def exec_list_directory(path: str = None, **kwargs) -> str:
+    if not path or path == ".":
+        path = kwargs.get("_working_dir", ".")
     path = _sanitize_path(path)
     if not os.path.isdir(path):
         return f"Error: Not a directory: {path}"
@@ -224,6 +272,8 @@ def exec_list_directory(path: str = ".", **kwargs) -> str:
 
 
 def exec_run_command(command: str, working_dir: str = None, **kwargs) -> str:
+    if not working_dir:
+        working_dir = kwargs.get("_working_dir")
     if working_dir:
         working_dir = _sanitize_path(working_dir)
     try:
@@ -248,7 +298,9 @@ def exec_run_command(command: str, working_dir: str = None, **kwargs) -> str:
         return f"Error running command: {e}"
 
 
-def exec_search_files(pattern: str, path: str = ".", **kwargs) -> str:
+def exec_search_files(pattern: str, path: str = None, **kwargs) -> str:
+    if not path or path == ".":
+        path = kwargs.get("_working_dir", ".")
     path = _sanitize_path(path)
     try:
         matches = sorted(glob_module.glob(os.path.join(path, pattern), recursive=True))
@@ -265,7 +317,9 @@ def exec_search_files(pattern: str, path: str = ".", **kwargs) -> str:
         return f"Error searching files: {e}"
 
 
-def exec_search_content(regex: str, path: str = ".", file_pattern: str = None, **kwargs) -> str:
+def exec_search_content(regex: str, path: str = None, file_pattern: str = None, **kwargs) -> str:
+    if not path or path == ".":
+        path = kwargs.get("_working_dir", ".")
     path = _sanitize_path(path)
     try:
         # Use ripgrep if available, else fall back to Python
@@ -367,6 +421,228 @@ def exec_run_skill(skill_id: str, params: dict = None, **kwargs) -> str:
         return f"Error running skill {skill_id}: {e}"
 
 
+# ============================================================
+# IDE TOOL EXECUTORS
+# ============================================================
+
+REACT_TAILWIND_TEMPLATE = {
+    "package.json": lambda name, desc: json.dumps({
+        "name": name,
+        "private": True,
+        "version": "0.0.1",
+        "description": desc or f"{name} — built with Klaus",
+        "type": "module",
+        "scripts": {
+            "dev": "vite --host 0.0.0.0",
+            "build": "tsc && vite build",
+            "preview": "vite preview"
+        },
+        "dependencies": {
+            "react": "^19.0.0",
+            "react-dom": "^19.0.0"
+        },
+        "devDependencies": {
+            "@types/react": "^19.0.0",
+            "@types/react-dom": "^19.0.0",
+            "@vitejs/plugin-react": "^4.3.0",
+            "autoprefixer": "^10.4.20",
+            "postcss": "^8.4.49",
+            "tailwindcss": "^3.4.17",
+            "typescript": "^5.7.0",
+            "vite": "^6.0.0"
+        }
+    }, indent=2),
+    "vite.config.ts": lambda name, desc: """import { defineConfig } from 'vite'
+import react from '@vitejs/plugin-react'
+
+export default defineConfig({
+  plugins: [react()],
+  server: { host: '0.0.0.0' }
+})
+""",
+    "tsconfig.json": lambda name, desc: json.dumps({
+        "compilerOptions": {
+            "target": "ES2020",
+            "useDefineForClassFields": True,
+            "lib": ["ES2020", "DOM", "DOM.Iterable"],
+            "module": "ESNext",
+            "skipLibCheck": True,
+            "moduleResolution": "bundler",
+            "allowImportingTsExtensions": True,
+            "isolatedModules": True,
+            "moduleDetection": "force",
+            "noEmit": True,
+            "jsx": "react-jsx",
+            "strict": True,
+            "noUnusedLocals": False,
+            "noUnusedParameters": False,
+        },
+        "include": ["src"]
+    }, indent=2),
+    "postcss.config.js": lambda name, desc: """export default {
+  plugins: {
+    tailwindcss: {},
+    autoprefixer: {},
+  },
+}
+""",
+    "tailwind.config.js": lambda name, desc: """/** @type {import('tailwindcss').Config} */
+export default {
+  content: ['./index.html', './src/**/*.{js,ts,jsx,tsx}'],
+  theme: { extend: {} },
+  plugins: [],
+}
+""",
+    "index.html": lambda name, desc: f"""<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{name}</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+""",
+    "src/main.tsx": lambda name, desc: """import React from 'react'
+import ReactDOM from 'react-dom/client'
+import App from './App'
+import './index.css'
+
+ReactDOM.createRoot(document.getElementById('root')!).render(
+  <React.StrictMode>
+    <App />
+  </React.StrictMode>,
+)
+""",
+    "src/index.css": lambda name, desc: """@tailwind base;
+@tailwind components;
+@tailwind utilities;
+""",
+    "src/App.tsx": lambda name, desc: f"""export default function App() {{
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center">
+      <div className="text-center">
+        <h1 className="text-4xl font-bold text-gray-900">{name}</h1>
+        <p className="mt-2 text-gray-600">{desc or 'Built with Klaus'}</p>
+      </div>
+    </div>
+  )
+}}
+""",
+    "src/vite-env.d.ts": lambda name, desc: '/// <reference types="vite/client" />\n',
+}
+
+
+def exec_create_project(name: str, description: str = "", **kwargs) -> str:
+    """Scaffold a React+Tailwind project."""
+    global _LAST_PROJECT_DIR
+    name = re.sub(r'[^a-z0-9_-]', '-', name.lower().strip())
+    if not name:
+        return "Error: Invalid project name"
+    project_dir = os.path.join(DEFAULT_PROJECT_DIR, name)
+    if os.path.exists(project_dir):
+        _LAST_PROJECT_DIR = project_dir
+        return f"Project already exists at {project_dir}. Use write_file/edit_file to modify it."
+    try:
+        os.makedirs(os.path.join(project_dir, "src"), exist_ok=True)
+        for rel_path, gen_fn in REACT_TAILWIND_TEMPLATE.items():
+            full_path = os.path.join(project_dir, rel_path)
+            os.makedirs(os.path.dirname(full_path), exist_ok=True)
+            with open(full_path, 'w') as f:
+                f.write(gen_fn(name, description))
+        _LAST_PROJECT_DIR = project_dir
+        return f"Created project at {project_dir}\nFiles: {', '.join(REACT_TAILWIND_TEMPLATE.keys())}\nNext: install_packages(packages=\"\") to install deps, then start_dev_server(project_dir=\"{project_dir}\")"
+    except Exception as e:
+        return f"Error creating project: {e}"
+
+
+_LAST_PROJECT_DIR: str = ""  # Track last created/used project
+
+
+def exec_install_packages(packages: str = "", project_dir: str = None, **kwargs) -> str:
+    """Install npm packages."""
+    global _LAST_PROJECT_DIR
+    wd = project_dir or _LAST_PROJECT_DIR or kwargs.get("_working_dir", DEFAULT_PROJECT_DIR)
+    wd = _sanitize_path(wd)
+    if not os.path.isfile(os.path.join(wd, "package.json")):
+        # Try to find a package.json in a subdirectory
+        for d in sorted(Path(wd).iterdir()):
+            if d.is_dir() and (d / "package.json").exists():
+                wd = str(d)
+                break
+        else:
+            return f"Error: No package.json found in {wd}"
+    _LAST_PROJECT_DIR = wd
+    try:
+        # Always install base deps first if node_modules doesn't exist
+        if not os.path.isdir(os.path.join(wd, "node_modules")):
+            base = subprocess.run(
+                "npm install", shell=True, capture_output=True, text=True,
+                timeout=120, cwd=wd
+            )
+            if base.returncode != 0:
+                return f"Error installing base deps:\n{base.stderr[:2000]}"
+
+        if packages.strip():
+            result = subprocess.run(
+                f"npm install {packages}", shell=True, capture_output=True, text=True,
+                timeout=120, cwd=wd
+            )
+            if result.returncode != 0:
+                return f"Error installing {packages}:\n{result.stderr[:2000]}"
+            return f"Installed {packages} in {wd}"
+        return f"Base dependencies installed in {wd}"
+    except subprocess.TimeoutExpired:
+        return "Error: npm install timed out (120s)"
+    except Exception as e:
+        return f"Error: {e}"
+
+
+# Track running dev servers
+_DEV_SERVERS: dict = {}  # port -> subprocess.Popen
+
+
+def exec_start_dev_server(project_dir: str = None, **kwargs) -> str:
+    """Start Vite dev server."""
+    wd = project_dir or _LAST_PROJECT_DIR or kwargs.get("_working_dir", DEFAULT_PROJECT_DIR)
+    wd = _sanitize_path(wd)
+    if not os.path.isfile(os.path.join(wd, "package.json")):
+        return f"Error: No package.json in {wd}"
+    # Install deps if needed
+    if not os.path.isdir(os.path.join(wd, "node_modules")):
+        install_result = exec_install_packages("", project_dir=wd)
+        if install_result.startswith("Error"):
+            return install_result
+    try:
+        # Kill any existing server for this dir
+        for port, info in list(_DEV_SERVERS.items()):
+            if info.get("dir") == wd:
+                try:
+                    info["proc"].terminate()
+                except:
+                    pass
+                del _DEV_SERVERS[port]
+
+        proc = subprocess.Popen(
+            "npx vite --host 0.0.0.0 --port 5173",
+            shell=True, cwd=wd,
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+            text=True
+        )
+        import time
+        time.sleep(3)  # Give it time to start
+        if proc.poll() is not None:
+            stderr = proc.stderr.read() if proc.stderr else ""
+            return f"Error: Dev server exited immediately.\n{stderr[:1000]}"
+        _DEV_SERVERS[5173] = {"proc": proc, "dir": wd}
+        return f"Dev server started on port 5173 for {wd}\nPreview should auto-detect it."
+    except Exception as e:
+        return f"Error starting dev server: {e}"
+
+
 # Executor dispatch
 TOOL_EXECUTORS = {
     "read_file": exec_read_file,
@@ -377,6 +653,9 @@ TOOL_EXECUTORS = {
     "search_files": exec_search_files,
     "search_content": exec_search_content,
     "run_skill": exec_run_skill,
+    "create_project": exec_create_project,
+    "install_packages": exec_install_packages,
+    "start_dev_server": exec_start_dev_server,
 }
 
 

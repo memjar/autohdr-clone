@@ -14,8 +14,8 @@ from tool_registry import get_tools, execute_tool
 
 logger = logging.getLogger("agent_loop")
 
-MAX_ITERATIONS = 5
-TOOL_TIMEOUT = 30  # seconds per tool execution
+MAX_ITERATIONS = 15
+TOOL_TIMEOUT = 60  # seconds per tool execution
 
 
 async def agent_loop(
@@ -66,7 +66,7 @@ async def agent_loop(
                 "options": {
                     "temperature": 0.3,
                     "num_ctx": 32768,
-                    "num_predict": 2048,
+                    "num_predict": 4096,
                 },
             }
             if tools:
@@ -144,8 +144,8 @@ async def agent_loop(
                 # Add tool result to conversation
                 # Truncate large results to avoid blowing context
                 result_str = json.dumps(result)
-                if len(result_str) > 8000:
-                    result_str = result_str[:8000] + "... [truncated]"
+                if len(result_str) > 16000:
+                    result_str = result_str[:16000] + "... [truncated]"
 
                 full_messages.append({"role": "tool", "content": result_str})
 
@@ -221,7 +221,7 @@ async def agent_loop_streaming(
                 "options": {
                     "temperature": 0.3,
                     "num_ctx": 32768,
-                    "num_predict": 2048,
+                    "num_predict": 4096,
                 },
             }
             if tools:
@@ -305,8 +305,8 @@ async def agent_loop_streaming(
                 }
 
                 result_str = json.dumps(result)
-                if len(result_str) > 8000:
-                    result_str = result_str[:8000] + "... [truncated]"
+                if len(result_str) > 16000:
+                    result_str = result_str[:16000] + "... [truncated]"
 
                 full_messages.append({"role": "tool", "content": result_str})
 

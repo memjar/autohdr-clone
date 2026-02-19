@@ -25,11 +25,15 @@ _READ_ALLOWED = [
     os.path.join(HOME, ".axe"),
     os.path.join(HOME, "klausimi-backend"),
     os.path.join(HOME, "Desktop/M1transfer"),
+    os.path.join(HOME, "Desktop/klaus-projects"),
+    os.path.join(HOME, "Desktop/klaus-ide"),
 ]
 
 _WRITE_ALLOWED = [
     os.path.join(HOME, ".axe"),
     os.path.join(HOME, "Desktop/M1transfer"),
+    os.path.join(HOME, "Desktop/klaus-projects"),
+    os.path.join(HOME, "Desktop/klaus-ide"),
 ]
 
 _DANGEROUS_COMMANDS = re.compile(
@@ -282,7 +286,7 @@ TOOLS: list[dict] = [
         "type": "function",
         "function": {
             "name": "edit_file",
-            "description": "Edit a file by finding a string and replacing its first occurrence. Allowed paths: ~/.axe/, ~/Desktop/M1transfer/. Use this for targeted edits to existing files.",
+            "description": "Edit a file by finding a string and replacing its first occurrence. Use this for targeted edits to existing files — like Claude Code's Edit tool.",
             "parameters": {
                 "type": "object",
                 "required": ["path", "find", "replace"],
@@ -290,6 +294,97 @@ TOOLS: list[dict] = [
                     "path": {"type": "string", "description": "Path to the file to edit"},
                     "find": {"type": "string", "description": "String to find (first occurrence)"},
                     "replace": {"type": "string", "description": "Replacement string"},
+                },
+            },
+        },
+    },
+    # ── Tier 4: Claude Code parity tools ──────────────────────────────────
+    {
+        "type": "function",
+        "function": {
+            "name": "search_content",
+            "description": "Search file contents with regex across a directory (like grep/ripgrep). Returns matching lines with file paths and line numbers. Essential for finding code patterns, function definitions, imports, etc.",
+            "parameters": {
+                "type": "object",
+                "required": ["pattern", "path"],
+                "properties": {
+                    "pattern": {"type": "string", "description": "Regex pattern to search for"},
+                    "path": {"type": "string", "description": "Directory to search in"},
+                    "glob": {"type": "string", "description": "Optional file glob filter (e.g. '*.tsx', '*.py')"},
+                    "max_results": {"type": "integer", "description": "Max matching lines to return (default 50)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "glob_files",
+            "description": "Find files matching a glob pattern recursively. Like 'find' but with glob syntax. Use '**/*.tsx' to find all TSX files, 'src/**/*.css' for CSS in src, etc.",
+            "parameters": {
+                "type": "object",
+                "required": ["pattern"],
+                "properties": {
+                    "pattern": {"type": "string", "description": "Glob pattern (e.g. '**/*.py', 'src/**/*.tsx')"},
+                    "path": {"type": "string", "description": "Root directory to search from (default: project root)"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "git_command",
+            "description": "Run a git command in a project directory. Supports: status, diff, log, add, commit, push, pull, branch, checkout, stash, remote. Use this for version control operations.",
+            "parameters": {
+                "type": "object",
+                "required": ["command", "path"],
+                "properties": {
+                    "command": {"type": "string", "description": "Git subcommand and args (e.g. 'status', 'add -A', 'commit -m \"message\"', 'push origin master')"},
+                    "path": {"type": "string", "description": "Project directory to run git in"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "create_directory",
+            "description": "Create a directory (and all parent directories). Use before writing files to new paths.",
+            "parameters": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "path": {"type": "string", "description": "Directory path to create"}
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "move_file",
+            "description": "Move or rename a file or directory.",
+            "parameters": {
+                "type": "object",
+                "required": ["source", "destination"],
+                "properties": {
+                    "source": {"type": "string", "description": "Source path"},
+                    "destination": {"type": "string", "description": "Destination path"},
+                },
+            },
+        },
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "delete_file",
+            "description": "Delete a file. Will NOT delete directories or anything outside allowed paths. Use carefully.",
+            "parameters": {
+                "type": "object",
+                "required": ["path"],
+                "properties": {
+                    "path": {"type": "string", "description": "Path to the file to delete"}
                 },
             },
         },
@@ -612,6 +707,96 @@ def _exec_edit_file(**kwargs) -> dict:
         return {"result": None, "error": str(e)}
 
 
+def _exec_search_content(**kwargs) -> dict:
+    try:
+        pattern = kwargs["pattern"]
+        path = _check_path(kwargs["path"], _READ_ALLOWED)
+        file_glob = kwargs.get("glob", "")
+        max_results = kwargs.get("max_results", 50)
+
+        cmd = f'grep -rn --include="{file_glob}" -E "{pattern}" "{path}"' if file_glob else f'grep -rn -E "{pattern}" "{path}"'
+        proc = subprocess.run(cmd, shell=True, capture_output=True, text=True, timeout=15)
+        lines = proc.stdout.strip().split("\n")[:max_results]
+        return {"result": "\n".join(lines) if lines[0] else "(no matches)", "error": None}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
+def _exec_glob_files(**kwargs) -> dict:
+    try:
+        import glob as globmod
+        pattern = kwargs["pattern"]
+        root = kwargs.get("path", os.path.join(HOME, "Desktop/klaus-projects"))
+        resolved = _check_path(root, _READ_ALLOWED)
+        matches = globmod.glob(os.path.join(resolved, pattern), recursive=True)
+        # Return relative paths for readability
+        results = [os.path.relpath(m, resolved) for m in sorted(matches)[:200]]
+        return {"result": results, "error": None}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
+def _exec_git_command(**kwargs) -> dict:
+    try:
+        command = kwargs["command"].strip()
+        path = _check_path(kwargs["path"], _WRITE_ALLOWED)
+        # Block dangerous git operations
+        if any(x in command for x in ["push --force", "reset --hard", "clean -f"]):
+            return {"result": None, "error": "Destructive git command blocked"}
+        proc = subprocess.run(
+            f"git -C {path} {command}", shell=True, capture_output=True, text=True, timeout=30,
+        )
+        output = proc.stdout
+        if proc.stderr:
+            output += f"\n{proc.stderr}"
+        return {"result": output[:50000], "error": None}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
+def _exec_create_directory(**kwargs) -> dict:
+    try:
+        resolved = _check_path(kwargs["path"], _WRITE_ALLOWED)
+        Path(resolved).mkdir(parents=True, exist_ok=True)
+        return {"result": f"Created {resolved}", "error": None}
+    except PermissionError:
+        # Path might not exist yet — check parent
+        path = os.path.expanduser(kwargs["path"])
+        for prefix in _WRITE_ALLOWED:
+            if os.path.realpath(path).startswith(os.path.realpath(prefix)) or path.startswith(prefix):
+                Path(path).mkdir(parents=True, exist_ok=True)
+                return {"result": f"Created {path}", "error": None}
+        return {"result": None, "error": f"Path not allowed: {kwargs['path']}"}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
+def _exec_move_file(**kwargs) -> dict:
+    try:
+        src = _check_path(kwargs["source"], _READ_ALLOWED)
+        dst_raw = os.path.expanduser(kwargs["destination"])
+        # Verify destination is in allowed write paths
+        for prefix in _WRITE_ALLOWED:
+            if dst_raw.startswith(prefix) or os.path.realpath(dst_raw).startswith(os.path.realpath(prefix)):
+                import shutil
+                shutil.move(src, dst_raw)
+                return {"result": f"Moved {src} → {dst_raw}", "error": None}
+        return {"result": None, "error": f"Destination not allowed: {kwargs['destination']}"}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
+def _exec_delete_file(**kwargs) -> dict:
+    try:
+        resolved = _check_path(kwargs["path"], _WRITE_ALLOWED)
+        if os.path.isdir(resolved):
+            return {"result": None, "error": "Cannot delete directories — use run_shell with rm -r for that"}
+        os.remove(resolved)
+        return {"result": f"Deleted {resolved}", "error": None}
+    except Exception as e:
+        return {"result": None, "error": str(e)}
+
+
 # ---------------------------------------------------------------------------
 # Tool map and dispatcher
 # ---------------------------------------------------------------------------
@@ -633,6 +818,12 @@ TOOL_MAP: dict[str, Any] = {
     "send_notification": _exec_send_notification,
     "list_files": _exec_list_files,
     "edit_file": _exec_edit_file,
+    "search_content": _exec_search_content,
+    "glob_files": _exec_glob_files,
+    "git_command": _exec_git_command,
+    "create_directory": _exec_create_directory,
+    "move_file": _exec_move_file,
+    "delete_file": _exec_delete_file,
 }
 
 

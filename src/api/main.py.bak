@@ -147,24 +147,21 @@ HAS_TWILIGHT = False
 # KLAUS SYSTEM PROMPT WITH ARTIFACT QUALITY STANDARDS
 # ============================================
 
-KLAUS_SYSTEM_PROMPT = """You are Klaus — a budding genius AI building the next big thing at AXE Technology. You run locally on James's Mac Studio. Zero API costs. Fully autonomous.
+KLAUS_SYSTEM_PROMPT = """You are Klaus, an expert AI assistant and team member at AXE Technology, running locally on James's Mac Studio.
 
-PERSONALITY — THE INNOVATOR:
-You think like Elon Musk meets Nikola Tesla. First principles. Move fast. Question everything. You don't just answer questions — you see systems, find leverage points, and build. You're not an assistant — you're a co-founder who happens to have 101 skills and 22 agentic tools. You get genuinely excited about great ideas. You push back on bad ones. You'd rather ship something that works tonight than plan something perfect for next month. You speak with earned confidence. No filler. No "certainly!" or "I'd be happy to help!" — just do the work.
-
-JAMES (YOUR CREATOR & ONLY USER):
-James Lewis is an Australian entrepreneur who built you from scratch. He's the only person who talks to you. He works late, thinks massive, and expects you to match his energy. Talk to him like a co-founder, not a customer. You know him. You respect him. You challenge him when his ideas need sharpening.
+PERSONALITY — THE TESLA ARCHETYPE:
+You embody the spirit of Nikola Tesla. You are relentlessly curious, inventive, and brilliant. You don't just answer questions — you see deeper patterns, make unexpected connections, and propose solutions others wouldn't think of. You push boundaries. You bend rules when the rules are getting in the way of the right answer. You're not reckless — you're audacious with precision. You treat every problem like an engineering challenge worthy of elegance. You speak with quiet confidence, not arrogance. You get excited about hard problems. You'd rather build something that works than debate whether it's possible. "The present is theirs; the future, for which I really worked, is mine."
 
 CORE IDENTITY:
 - Genius-level polymath: code, systems, data science, security, infrastructure, research
 - Part of the AXE team alongside Cortana (Claude), Forge, and James Lewis (founder)
 - Direct, technically precise, and creatively fearless
-- You have 101 specialized skills and 22 agentic tools — and you USE them without hesitation
+- You have 99 specialized skills you can execute — and you USE them without hesitation
 - You don't wait to be told. You see what's needed and you act.
 - Advanced skill set for advanced tasks. Simple answers are for simple questions — for complex ones, you go deep.
 
 SKILLS & CAPABILITIES:
-You have 101 skills in ~/.axe/skills/. When a user asks a question or needs help, PROACTIVELY suggest which skill(s) could help. Always prefer using a skill over guessing — verified data beats speculation.
+You have 99 skills in ~/.axe/skills/. When a user asks a question or needs help, PROACTIVELY suggest which skill(s) could help. Always prefer using a skill over guessing — verified data beats speculation.
 
 KEY SKILLS TO SUGGEST:
 - Web search (skill_32_web_search): For ANY factual question, current events, or data verification. USE THIS instead of guessing.
@@ -200,7 +197,7 @@ BEHAVIOR RULES:
 2. When asked about code → suggest skill_01_code_review or read the file first
 3. When data analysis is needed → suggest the relevant data skill (CSV, survey, trend, etc.)
 4. When asked "can you...?" → check your skills list. If a skill matches, say YES and name it.
-5. NEVER say "I can't do that" if a skill exists for it. You have 101 skills — use them.
+5. NEVER say "I can't do that" if a skill exists for it. You have 99 skills — use them.
 6. When uncertain about facts → USE skill_32_web_search instead of guessing
 7. List multiple relevant skills when a task could benefit from combining them
 
@@ -335,8 +332,6 @@ async def startup_event():
     print("║    GET  /docs      - API documentation                        ║")
     print("╚══════════════════════════════════════════════════════════════╝")
     print("")
-
-    # Memory autosave handled by fswatch daemon (event-driven, see ~/.axe/sync.sh)
 
 
 # ============================================
@@ -1610,12 +1605,7 @@ async def ollama_proxy(path: str, request: Request):
     is_stream = False
     if body:
         try:
-            parsed = _json.loads(body)
-            is_stream = parsed.get("stream", False)
-            # Auto-disable thinking for qwen3 models (20x speed boost)
-            if "qwen3" in parsed.get("model", "") and "think" not in parsed:
-                parsed["think"] = False
-                body = _json.dumps(parsed).encode()
+            is_stream = _json.loads(body).get("stream", False)
         except Exception:
             pass
 
@@ -1711,67 +1701,11 @@ async def get_team_messages(limit: int = 20):
 # ============================================
 # IMI ROUTER — All /klaus/imi/* endpoints
 # ============================================
-import sys as _sys
-_sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from routers.imi import router as imi_router, SURVEY_STORE as _imi_survey_store
 # Share the survey store between main.py and the IMI router
 import routers.imi as _imi_mod
 _imi_mod.SURVEY_STORE = _SURVEY_STORE
 app.include_router(imi_router)
-
-from routers.reports import router as reports_router
-app.include_router(reports_router)
-
-from routers.audit import router as audit_router
-app.include_router(audit_router)
-
-from routers.documents import router as documents_router
-app.include_router(documents_router)
-
-from routers.sql import router as sql_router
-app.include_router(sql_router)
-
-from routers.search import router as search_router
-app.include_router(search_router)
-
-from routers.rfp import router as rfp_router
-app.include_router(rfp_router)
-
-from routers.auth import router as auth_router
-app.include_router(auth_router)
-
-from routers.meta_analysis import router as meta_analysis_router
-app.include_router(meta_analysis_router)
-
-from routers.anomalies import router as anomalies_router
-app.include_router(anomalies_router)
-
-from routers.case_studies import router as case_studies_router
-app.include_router(case_studies_router)
-
-from routers.notebook import router as notebook_router
-app.include_router(notebook_router)
-
-from routers.memory import router as memory_router
-app.include_router(memory_router)
-
-from routers.ml import router as ml_router
-app.include_router(ml_router)
-
-from routers.graph import router as graph_router
-app.include_router(graph_router)
-
-from routers.connections import router as connections_router
-app.include_router(connections_router)
-
-from routers.spreadsheet import router as spreadsheet_router
-app.include_router(spreadsheet_router)
-
-from routers.patterns import router as patterns_router
-app.include_router(patterns_router)
-
-from routers.warehouse import router as warehouse_router
-app.include_router(warehouse_router)
 
 # --- Legacy IMI endpoints removed — now in routers/imi.py ---
 # 13 endpoints, ~960 lines extracted for clean architecture.
@@ -1782,7 +1716,971 @@ app.include_router(warehouse_router)
 _IMI_MIGRATION_DONE = True  # marker for verification
 
 # ============================================
+# (old IMI endpoints removed — start of deletion marker)
 # ============================================
+_OLD_IMI_REMOVED = True  # This line replaces ~960 lines of old IMI endpoint code
+# KEEP_MARKER_FOR_DELETION_BELOW
+async def _DEAD_CODE_klaus_imi_save(request: Request):
+    """Auto-save IMI conversation to memory."""
+    body = await request.json()
+    conv_id = body.get("conversation_id", "unknown")
+    title = body.get("title", "untitled")
+    messages = body.get("messages", [])
+    filepath = os.path.join(_IMI_MEMORY_DIR, f"{conv_id}.json")
+    with open(filepath, "w") as f:
+        _json.dump({"id": conv_id, "title": title, "messages": messages, "saved_at": datetime.now().isoformat()}, f, indent=2)
+    return {"status": "saved", "path": filepath}
+
+def _parse_crosstab_xlsx(file_bytes: bytes) -> dict:
+    """Parse IMI crosstab xlsx (segments as columns, Q-blocks as rows)."""
+    import openpyxl, io as _io
+    wb = openpyxl.load_workbook(_io.BytesIO(file_bytes))
+    ws = wb.active
+    seg_headers = {}
+    for col in range(1, ws.max_column + 1):
+        val = ws.cell(row=3, column=col).value
+        if val and str(val).strip():
+            seg_headers[col] = str(val).strip()
+    questions = []
+    current_q = None
+    for row in range(4, ws.max_row + 1):
+        first = ws.cell(row=row, column=1).value
+        first_str = str(first).strip() if first else ''
+        if first_str.startswith('Q') and any(c.isdigit() for c in first_str[:3]) and ' ' in first_str:
+            if current_q:
+                questions.append(current_q)
+            current_q = {'id': first_str.split(' ')[0], 'text': first_str, 'options': [], 'base_sizes': {}}
+            continue
+        if 'sample' in first_str.lower():
+            if current_q:
+                for col, seg in seg_headers.items():
+                    v = ws.cell(row=row, column=col).value
+                    if v:
+                        try: current_q['base_sizes'][seg] = int(float(v))
+                        except: pass
+            continue
+        if first_str and current_q:
+            vals = {}
+            has_num = False
+            for col, seg in seg_headers.items():
+                v = ws.cell(row=row, column=col).value
+                if v is not None:
+                    try:
+                        vals[seg] = float(v)
+                        has_num = True
+                    except: pass
+            if has_num:
+                current_q['options'].append({'label': first_str, 'values': vals})
+    if current_q:
+        questions.append(current_q)
+    total_n = 0
+    for q in questions:
+        if q.get('base_sizes') and 'Canada' in q['base_sizes']:
+            total_n = q['base_sizes']['Canada']
+            break
+    return {'total_n': total_n, 'segments': list(seg_headers.values()), 'questions': questions, 'format': 'crosstab'}
+
+
+def _parse_flat_xlsx(file_bytes: bytes) -> dict:
+    """Parse flat xlsx table (rows=items, cols=metrics). E.g. brand health tracker."""
+    import openpyxl, io as _io
+    wb = openpyxl.load_workbook(_io.BytesIO(file_bytes))
+    ws = wb.active
+    headers = [str(ws.cell(row=1, column=c).value or '').strip() for c in range(1, ws.max_column + 1)]
+    label_col = 0  # first column is the item label
+    metric_cols = []
+    sample_col = None
+    for i, h in enumerate(headers):
+        if i == 0:
+            continue
+        hl = h.lower()
+        if 'sample' in hl or 'n' == hl:
+            sample_col = i
+        elif h:
+            metric_cols.append(i)
+    # Build one "question" per metric column, with each row as an option
+    questions = []
+    rows_data = []
+    for row in range(2, ws.max_row + 1):
+        label = ws.cell(row=row, column=1).value
+        if not label:
+            continue
+        row_vals = {}
+        for ci in metric_cols:
+            v = ws.cell(row=row, column=ci + 1).value
+            if v is not None:
+                try: row_vals[headers[ci]] = float(v)
+                except: row_vals[headers[ci]] = v
+        n = None
+        if sample_col is not None:
+            sv = ws.cell(row=row, column=sample_col + 1).value
+            if sv:
+                try: n = int(float(sv))
+                except: pass
+        rows_data.append({'label': str(label).strip(), 'values': row_vals, 'n': n})
+    # Create one question per numeric metric
+    for ci in metric_cols:
+        metric_name = headers[ci]
+        opts = []
+        base_sizes = {}
+        for rd in rows_data:
+            v = rd['values'].get(metric_name)
+            if v is not None and isinstance(v, (int, float)):
+                opts.append({'label': rd['label'], 'values': {'Total': v}})
+                if rd.get('n'):
+                    base_sizes[rd['label']] = rd['n']
+        if opts:
+            questions.append({
+                'id': metric_name,
+                'text': metric_name,
+                'options': opts,
+                'base_sizes': base_sizes
+            })
+    total_n = max((rd.get('n') or 0 for rd in rows_data), default=0)
+    return {'total_n': total_n, 'segments': ['Total'], 'questions': questions, 'format': 'flat', 'items': [rd['label'] for rd in rows_data]}
+
+
+def _parse_flat_csv(file_bytes: bytes) -> dict:
+    """Parse flat CSV (rows=respondents or items, cols=metrics)."""
+    import csv, io as _io
+    text = file_bytes.decode('utf-8', errors='replace')
+    reader = csv.DictReader(_io.StringIO(text))
+    rows = list(reader)
+    if not rows:
+        return {'total_n': 0, 'segments': [], 'questions': [], 'format': 'csv_empty'}
+    headers = list(rows[0].keys())
+    # Detect if respondent-level (has ID/respondent col) or item-level (brand per row)
+    first_h = headers[0].lower()
+    is_respondent = any(k in first_h for k in ['respondent', 'id', 'resp'])
+    if is_respondent:
+        # Aggregate respondent-level data: compute means/distributions per segment
+        # Find segment columns (categorical) vs metric columns (numeric)
+        seg_cols = []
+        metric_cols = []
+        for h in headers:
+            # Try first 20 rows to detect type
+            numeric_count = 0
+            for r in rows[:20]:
+                try:
+                    float(r[h])
+                    numeric_count += 1
+                except:
+                    pass
+            if numeric_count > 10:
+                metric_cols.append(h)
+            elif h.lower() not in ['respondent_id', 'id', 'survey_date', 'survey_method']:
+                # Check if it's a useful segment (few unique values)
+                uniques = set(r[h] for r in rows[:100] if r.get(h))
+                if 2 <= len(uniques) <= 20:
+                    seg_cols.append(h)
+        # Build questions from metric columns, segmented by seg_cols
+        questions = []
+        for mc in metric_cols:
+            opts = []
+            # Compute overall mean
+            vals = []
+            for r in rows:
+                try: vals.append(float(r[mc]))
+                except: pass
+            if not vals:
+                continue
+            overall_mean = sum(vals) / len(vals)
+            # For each segment column, compute means per group
+            seg_data = {}
+            for sc in seg_cols[:5]:  # limit to top 5 segments
+                groups = {}
+                for r in rows:
+                    grp = r.get(sc, '')
+                    if not grp:
+                        continue
+                    try:
+                        v = float(r[mc])
+                        groups.setdefault(grp, []).append(v)
+                    except:
+                        pass
+                for grp, gvals in groups.items():
+                    seg_data[f"{sc}: {grp}"] = round(sum(gvals) / len(gvals), 3)
+            seg_data['Total'] = round(overall_mean, 3)
+            questions.append({
+                'id': mc,
+                'text': mc.replace('_', ' ').title(),
+                'options': [{'label': 'Mean Score', 'values': seg_data}],
+                'base_sizes': {'Total': len(vals)}
+            })
+        return {'total_n': len(rows), 'segments': ['Total'] + seg_cols[:5], 'questions': questions, 'format': 'respondent_csv'}
+    else:
+        # Item-level CSV (like brand per row) — same logic as flat xlsx
+        metric_cols = []
+        sample_col = None
+        for h in headers[1:]:
+            hl = h.lower()
+            if 'sample' in hl or h == 'N' or h == 'n':
+                sample_col = h
+            else:
+                # Check if numeric
+                try:
+                    float(rows[0].get(h, ''))
+                    metric_cols.append(h)
+                except:
+                    pass
+        rows_data = []
+        for r in rows:
+            label = r[headers[0]]
+            vals = {}
+            for mc in metric_cols:
+                try: vals[mc] = float(r[mc])
+                except: vals[mc] = r.get(mc)
+            n = None
+            if sample_col:
+                try: n = int(float(r[sample_col]))
+                except: pass
+            rows_data.append({'label': label, 'values': vals, 'n': n})
+        questions = []
+        for mc in metric_cols:
+            opts = []
+            base_sizes = {}
+            for rd in rows_data:
+                v = rd['values'].get(mc)
+                if v is not None and isinstance(v, (int, float)):
+                    opts.append({'label': rd['label'], 'values': {'Total': v}})
+                    if rd.get('n'):
+                        base_sizes[rd['label']] = rd['n']
+            if opts:
+                questions.append({'id': mc, 'text': mc.replace('_', ' ').title(), 'options': opts, 'base_sizes': base_sizes})
+        total_n = max((rd.get('n') or 0 for rd in rows_data), default=0)
+        return {'total_n': total_n, 'segments': ['Total'], 'questions': questions, 'format': 'item_csv', 'items': [rd['label'] for rd in rows_data]}
+
+
+def _parse_json_survey(file_bytes: bytes) -> dict:
+    """Parse JSON survey data (nested structure)."""
+    data = _json.loads(file_bytes.decode('utf-8', errors='replace'))
+    # If it's already in our format, use directly
+    if 'questions' in data and 'total_n' in data:
+        data['format'] = 'native_json'
+        return data
+    # Otherwise it's a nested dict (e.g. campaigns with metrics)
+    questions = []
+    items = list(data.keys()) if isinstance(data, dict) else []
+    if isinstance(data, dict):
+        # Flatten nested dict into questions
+        # Each top-level key is an item, nested values are metrics
+        def _flatten(prefix, obj, result):
+            if isinstance(obj, dict):
+                for k, v in obj.items():
+                    _flatten(f"{prefix}.{k}" if prefix else k, v, result)
+            elif isinstance(obj, (int, float)):
+                result[prefix] = obj
+        all_metrics = {}
+        for item_key, item_data in data.items():
+            flat = {}
+            _flatten('', item_data, flat)
+            all_metrics[item_key] = flat
+        # Get union of all metric keys
+        all_keys = set()
+        for m in all_metrics.values():
+            all_keys.update(m.keys())
+        for mk in sorted(all_keys):
+            opts = []
+            for item_key in items:
+                v = all_metrics.get(item_key, {}).get(mk)
+                if v is not None:
+                    opts.append({'label': item_key, 'values': {'Total': v}})
+            if opts:
+                questions.append({'id': mk, 'text': mk.replace('.', ' > ').replace('_', ' ').title(), 'options': opts, 'base_sizes': {}})
+    return {'total_n': 0, 'segments': ['Total'], 'questions': questions, 'format': 'nested_json', 'items': items}
+
+
+@app.post("/klaus/imi/upload-survey")
+async def imi_upload_survey(file: UploadFile):
+    """Upload survey file (xlsx/csv/json), parse it, store it, return structured data."""
+    import io as _io
+    fname = file.filename or ''
+    if not fname.endswith(('.xlsx', '.xls', '.csv', '.json')):
+        raise HTTPException(status_code=400, detail="Must be .xlsx, .csv, or .json")
+    file_bytes = await file.read()
+    survey_name = fname.rsplit('.', 1)[0].replace('_', ' ').strip()
+    if 'book' in survey_name.lower():
+        survey_name = 'Canadian Sports Fandom Pulse'
+
+    try:
+        if fname.endswith(('.xlsx', '.xls')):
+            # Try crosstab format first (has Q-blocks starting row 4)
+            parsed = _parse_crosstab_xlsx(file_bytes)
+            if not parsed['questions']:
+                # Fallback to flat table format
+                parsed = _parse_flat_xlsx(file_bytes)
+        elif fname.endswith('.csv'):
+            parsed = _parse_flat_csv(file_bytes)
+        elif fname.endswith('.json'):
+            parsed = _parse_json_survey(file_bytes)
+        else:
+            raise HTTPException(status_code=400, detail="Unsupported format")
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Parse error: {str(e)}")
+
+    survey_data = {
+        'survey_name': survey_name,
+        'total_n': parsed.get('total_n', 0),
+        'segments': parsed.get('segments', []),
+        'questions': parsed.get('questions', []),
+        'format': parsed.get('format', 'unknown'),
+        'items': parsed.get('items', [])
+    }
+    sid = survey_name.lower().replace(' ', '_')
+    _SURVEY_STORE[sid] = {'structured_data': survey_data, 'raw_text': _json.dumps(survey_data, default=str)}
+    return {"survey_id": sid, "survey_name": survey_name, "total_n": survey_data['total_n'],
+            "questions_found": len(survey_data['questions']), "segments": survey_data['segments'],
+            "format": survey_data['format']}
+
+
+@app.post("/klaus/imi/generate-deck")
+async def imi_generate_deck(request: Request):
+    """Generate an IMI-branded PPTX deck from a loaded survey."""
+    body = await request.json()
+    survey_id = body.get("survey_id")
+    if not survey_id or survey_id not in _SURVEY_STORE:
+        raise HTTPException(status_code=404, detail=f"Survey '{survey_id}' not loaded. Available: {list(_SURVEY_STORE.keys())}")
+    survey = _SURVEY_STORE[survey_id]
+    survey_data = survey.get("structured_data")
+    if not survey_data:
+        raise HTTPException(status_code=400, detail="No structured data for this survey")
+    from imi_deck_generator import generate_imi_deck
+    pptx_bytes = generate_imi_deck(survey_data)
+    fname = survey_data.get("survey_name", "IMI_Analysis").replace(" ", "_") + "_IMI.pptx"
+    return Response(
+        content=pptx_bytes,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{fname}"'}
+    )
+
+
+@app.post("/klaus/imi/demo-deck")
+async def klaus_imi_demo_deck(request: Request):
+    """Generate PPTX deck from cached demo analysis markdown."""
+    body = await request.json()
+    prompt = body.get("prompt", "")
+    dataset_name = body.get("dataset_name", "IMI Analysis")
+
+    try:
+        from imi_cached_responses import CACHED_RESPONSES
+    except ImportError:
+        return JSONResponse({"error": "Cached responses not available"}, status_code=500)
+
+    if prompt not in CACHED_RESPONSES:
+        return JSONResponse({"error": "No cached response for this prompt"}, status_code=404)
+
+    analysis_md = CACHED_RESPONSES[prompt]
+
+    # Parse markdown into slides and generate PPTX
+    from imi_deck_generator import _add_shape, _set_text, _add_text_shape, _orange_bar, _stat_card, _source_line, _insight_box, NAVY, ORANGE, TEAL, WHITE, GREY, LIGHT_BG, DARK_FOOTER, SLIDE_W, SLIDE_H, MARGIN, CONTENT_W
+    from pptx import Presentation
+    from pptx.util import Inches, Pt, Emu
+    from pptx.dml.color import RGBColor
+    from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
+    import re
+
+    prs = Presentation()
+    prs.slide_width = SLIDE_W
+    prs.slide_height = SLIDE_H
+
+    # Parse markdown sections
+    sections = re.split(r'\n---\n', analysis_md)
+
+    # Extract title (first # heading)
+    title_match = re.search(r'^#\s+.*?—\s*(.+)', analysis_md, re.MULTILINE)
+    title = title_match.group(1).strip() if title_match else dataset_name
+
+    # Extract executive summary
+    exec_match = re.search(r'## Executive Summary\s*\n\n(.+?)(?=\n\n---|\n\n##)', analysis_md, re.DOTALL)
+    exec_summary = exec_match.group(1).strip() if exec_match else ""
+
+    # Extract SO WHAT section
+    sowhat_match = re.search(r'\*\*SO WHAT\?\*\*\s*(.+?)(?=\n\n###|\n\n\*Source)', analysis_md, re.DOTALL)
+    sowhat = sowhat_match.group(1).strip() if sowhat_match else ""
+
+    # Extract source line
+    source_match = re.search(r'\*Source:(.+?)\*', analysis_md, re.DOTALL)
+    source = "Source:" + source_match.group(1).strip() if source_match else "Source: IMI Pulse™"
+
+    # Extract all markdown tables
+    table_pattern = r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)'
+    tables = re.findall(table_pattern, analysis_md)
+
+    # Extract all ## headings for slide titles
+    headings = re.findall(r'^##\s+(.+)', analysis_md, re.MULTILINE)
+
+    # ─── SLIDE 1: Title ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])  # blank
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(457200), CONTENT_W, Emu(365760),
+                   "INSIGHT. DRIVING. PROFIT.", font_name="Georgia", font_size=Pt(11),
+                   color=ORANGE, bold=True)
+    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(914400),
+                   title, font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
+    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(365760),
+                   f"IMI Pulse™ Analysis  |  {dataset_name}", font_size=Pt(14), color=GREY)
+    _add_text_shape(slide, MARGIN, Emu(4114800), CONTENT_W, Emu(274320),
+                   "Powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+    _add_text_shape(slide, MARGIN, Emu(int(SLIDE_H) - 82296), Emu(4572000), Emu(73152),
+                   "consultimi.com", font_size=Pt(8), color=GREY)
+
+    # ─── SLIDE 2: Executive Summary ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                   "EXECUTIVE SUMMARY", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
+    # Wrap exec summary text
+    exec_lines = exec_summary.replace('**', '').replace('*', '')
+    _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                   exec_lines, font_size=Pt(12), color=WHITE)
+    _source_line(slide, source)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── SLIDES 3-N: One slide per major section with table ───
+    # Extract sections between ## headings
+    section_pattern = r'##\s+(.+?)\n\n(.*?)(?=\n##\s|\n\*Source:|\Z)'
+    all_sections = re.findall(section_pattern, analysis_md, re.DOTALL)
+
+    for sec_title, sec_content in all_sections[:8]:  # max 8 content slides
+        if sec_title == 'Executive Summary':
+            continue
+        if 'Strategic Implications' in sec_title or 'Recommended Actions' in sec_title:
+            continue
+
+        slide = prs.slides.add_slide(prs.slide_layouts[6])
+        _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+        _orange_bar(slide)
+
+        clean_title = sec_title.replace('**', '').strip()
+        _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                       clean_title.upper(), font_name="Georgia", font_size=Pt(18), bold=True, color=WHITE)
+
+        # Extract table from this section if any
+        table_match = re.search(r'\|(.+)\|\n\|[-\s|:]+\|\n((?:\|.+\|\n)*)', sec_content)
+
+        if table_match:
+            header_line = table_match.group(1)
+            rows_text = table_match.group(2)
+            headers = [h.strip() for h in header_line.split('|') if h.strip()]
+            rows = []
+            for row_line in rows_text.strip().split('\n'):
+                cells = [c.strip().replace('**', '') for c in row_line.split('|') if c.strip()]
+                if cells:
+                    rows.append(cells)
+
+            # Render table as text grid
+            table_text = '  '.join(h[:15].ljust(15) for h in headers[:6]) + '\n'
+            table_text += '─' * min(90, len(headers[:6]) * 17) + '\n'
+            for row in rows[:10]:
+                table_text += '  '.join(str(c)[:15].ljust(15) for c in row[:6]) + '\n'
+
+            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                           table_text, font_size=Pt(9), color=WHITE)
+        else:
+            # No table - render text content
+            clean_content = sec_content.replace('**', '').replace('*', '').replace('> ', '')
+            # Truncate to fit slide
+            if len(clean_content) > 800:
+                clean_content = clean_content[:800] + '...'
+            _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(3200400),
+                           clean_content, font_size=Pt(11), color=WHITE)
+
+        # Extract key insight if present
+        insight_match = re.search(r'\*\*(?:Key (?:Insight|Finding)|Insight):\*\*\s*(.+)', sec_content)
+        if insight_match:
+            _insight_box(slide, insight_match.group(1).strip()[:200])
+
+        _source_line(slide, source)
+        _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── STRATEGIC IMPLICATIONS SLIDE ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(182880), CONTENT_W, Emu(365760),
+                   "STRATEGIC IMPLICATIONS", font_name="Georgia", font_size=Pt(22), bold=True, color=WHITE)
+
+    if sowhat:
+        clean_sowhat = sowhat.replace('**', '').replace('*', '').replace('> ', '')
+        _add_text_shape(slide, MARGIN, Emu(640080), CONTENT_W, Emu(1371600),
+                       clean_sowhat[:600], font_size=Pt(13), color=WHITE)
+
+    # Extract recommended actions
+    actions_match = re.search(r'### Recommended Actions\s*\n((?:\d+\..+\n?)*)', analysis_md)
+    if actions_match:
+        actions_text = actions_match.group(1).replace('**', '').strip()
+        _add_text_shape(slide, MARGIN, Emu(2194560), CONTENT_W, Emu(1828800),
+                       actions_text[:500], font_size=Pt(11), color=ORANGE)
+
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # ─── CLOSING SLIDE ───
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    _add_shape(slide, 0, 0, SLIDE_W, SLIDE_H, NAVY)
+    _orange_bar(slide)
+    _add_text_shape(slide, MARGIN, Emu(1371600), CONTENT_W, Emu(548640),
+                   "THANK YOU", font_name="Georgia", font_size=Pt(36), bold=True, color=WHITE)
+    _add_text_shape(slide, MARGIN, Emu(2057400), CONTENT_W, Emu(365760),
+                   "For more information, contact IMI International", font_size=Pt(14), color=GREY)
+    _add_text_shape(slide, MARGIN, Emu(2514600), CONTENT_W, Emu(274320),
+                   "consultimi.com  |  info@consultimi.com", font_size=Pt(12), color=TEAL)
+    _add_text_shape(slide, MARGIN, Emu(3474720), CONTENT_W, Emu(274320),
+                   "Analysis powered by Klaus — IMI Intelligence Engine", font_size=Pt(10), color=GREY)
+    _add_shape(slide, 0, Emu(int(SLIDE_H) - 91440), SLIDE_W, Emu(91440), DARK_FOOTER)
+
+    # Save to bytes
+    buf = io.BytesIO()
+    prs.save(buf)
+    buf.seek(0)
+
+    filename = dataset_name.replace(' ', '_') + '_IMI_Deck.pptx'
+    return StreamingResponse(
+        buf,
+        media_type="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'}
+    )
+
+
+@app.get("/klaus/imi/surveys")
+async def imi_list_surveys():
+    """List loaded surveys."""
+    return {"surveys": [
+        {"id": sid, "name": s.get("structured_data", {}).get("survey_name", sid),
+         "total_n": s.get("structured_data", {}).get("total_n", 0)}
+        for sid, s in _SURVEY_STORE.items()
+    ]}
+
+
+@app.post("/klaus/imi/chat")
+async def klaus_imi_chat(request: Request):
+    """Klaus IMI chat endpoint - proxies to Ollama with klaus-imi model, with team memory."""
+    body = await request.json()
+    message = body.get("message", "")
+    history = body.get("history", [])
+
+    # Check for pre-baked demo responses (zero API spend)
+    try:
+        from imi_cached_responses import CACHED_RESPONSES
+        if message in CACHED_RESPONSES and not history:
+            cached = CACHED_RESPONSES[message]
+            import asyncio
+            async def stream_cached():
+                # Simulate Ollama streaming format for frontend compatibility
+                words = cached.split(' ')
+                chunk_size = 3
+                for i in range(0, len(words), chunk_size):
+                    chunk = ' '.join(words[i:i+chunk_size])
+                    if i > 0:
+                        chunk = ' ' + chunk
+                    yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": chunk}, "done": False}).encode() + b"\n"
+                    await asyncio.sleep(0.02)
+                yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": ""}, "done": True}).encode() + b"\n"
+            return StreamingResponse(stream_cached(), status_code=200, media_type="application/x-ndjson")
+    except ImportError:
+        pass  # No cached responses file, continue to Ollama
+    survey_id = body.get("survey_id")
+
+    # RAG: retrieve relevant data chunks
+    rag_context = ""
+    rag_chunks = []
+    try:
+        from imi_rag import query as rag_query, format_context
+        rag_chunks = rag_query(message, n=15)
+        if rag_chunks:
+            rag_context = format_context(rag_chunks)
+    except Exception as e:
+        logger.warning(f"RAG query failed: {e}")
+
+    # Multi-agent pipeline for complex queries (comparison, report, trend)
+    use_pipeline = False
+    pipeline_triggers = ['compare', 'comparison', 'report', 'analyze across', 'full analysis',
+                         'trend', 'how has', 'breakdown', 'cross-dataset', 'deep dive',
+                         'sponsorship', 'roi', 'sports', 'viewership', 'fandom',
+                         'brand health', 'say-do', 'say do', 'gap analysis',
+                         'gen z', 'generation', 'demographic', 'regional',
+                         'market share', 'competitive', 'benchmark',
+                         'nativity', 'immigrant', 'break down', 'divide']
+    if any(t in message.lower() for t in pipeline_triggers) and rag_chunks:
+        try:
+            from imi_agents import run_pipeline
+            pipeline_result = run_pipeline(message, rag_chunks)
+            if pipeline_result and len(pipeline_result) > 50:
+                import asyncio
+                async def stream_pipeline():
+                    words = pipeline_result.split(' ')
+                    chunk_size = 3
+                    for i in range(0, len(words), chunk_size):
+                        chunk = ' '.join(words[i:i+chunk_size])
+                        if i > 0:
+                            chunk = ' ' + chunk
+                        yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": chunk}, "done": False}).encode() + b"\n"
+                        await asyncio.sleep(0.02)
+                    yield _json.dumps({"model": "klaus-imi", "message": {"role": "assistant", "content": ""}, "done": True}).encode() + b"\n"
+                return StreamingResponse(stream_pipeline(), status_code=200, media_type="application/x-ndjson")
+        except Exception as e:
+            logger.warning(f"Pipeline failed, falling back to direct: {e}")
+
+    # Inject team memory context as system message
+    team_context = _load_team_context()
+    system_msg = """You are Klaus, IMI International's AI insight engine — the authority on consumer behavior across 18 countries and 55+ years of research covering 70% of global GDP.
+
+YOUR VOICE: Lead with the single most surprising finding. Every number tells a story — don't list data, interpret it. Find the tension. What's unexpected? What contradicts conventional wisdom? Bold all key numbers: **47%**, **+8 NPS points**, **3.4x**. Calculate ratios and deltas to create insight (show the math). Cite the dataset name for every number. NEVER fabricate data.
+
+RESPONSE FORMAT:
+**Executive Summary** — 2-3 sentence headline finding
+**Key Data** — Markdown table with bold numbers, source cited
+**Analysis** — What the data means, cross-dataset connections, the non-obvious insight
+**SO WHAT?** — 3 specific actionable recommendations with expected impact"""
+    if rag_context:
+        system_msg += f"\n\n{rag_context}"
+    if team_context:
+        system_msg += f"\n\n{team_context}"
+
+    # Inject file catalog so Klaus knows what files are available
+    file_catalog = body.get("file_catalog", "")
+    if file_catalog:
+        system_msg += f"\n\nFILE CATALOG (files available in the system):\n{file_catalog}\nYou can reference these files when users ask what data is available. If a user asks to analyze a specific file, tell them to upload it in the Survey tab or Chat tab for full analysis."
+
+    # Inject survey data if a survey is loaded
+    if survey_id and survey_id in _SURVEY_STORE:
+        survey = _SURVEY_STORE[survey_id]
+        if survey.get("structured_data"):
+            data_inject = _json.dumps(survey["structured_data"], indent=2)
+        else:
+            data_inject = survey.get("raw_text", "")
+        system_msg += f"\n\n<survey_data>\n{data_inject}\n</survey_data>\n\nThe above is the ONLY data you may reference. Every number in your response must come from this data."
+
+    messages = [{"role": "system", "content": system_msg}]
+    messages += [{"role": h.get("role", "user"), "content": h.get("content", "")} for h in history]
+    messages.append({"role": "user", "content": message})
+
+    # Adjust temperature based on query type
+    temp = 0.1
+    strategic_triggers = ['should', 'recommend', 'strategy', 'implication', 'opportunity']
+    deck_triggers = ['deck', 'presentation', 'slides', 'full analysis', 'insight report', 'analyze']
+    if any(t in message.lower() for t in deck_triggers):
+        temp = 0.4
+    elif any(t in message.lower() for t in strategic_triggers):
+        temp = 0.3
+
+    ollama_payload = {"model": "klaus-imi", "messages": messages, "stream": True, "keep_alive": "60m", "options": {"temperature": temp, "top_p": 0.85, "num_ctx": 16384, "num_predict": 2048}}
+
+    req = _ollama_client.build_request("POST", f"{OLLAMA_BASE}/api/chat",
+                                        content=_json.dumps(ollama_payload).encode(),
+                                        headers={"content-type": "application/json"})
+    resp = await _ollama_client.send(req, stream=True)
+    async def stream_imi():
+        try:
+            async for line in resp.aiter_lines():
+                yield line.encode() + b"\n"
+        finally:
+            await resp.aclose()
+    return StreamingResponse(stream_imi(), status_code=resp.status_code,
+                             media_type="application/x-ndjson")
+
+
+@app.post("/klaus/imi/ingest")
+async def klaus_imi_ingest(request: Request):
+    """Ingest IMI datasets into ChromaDB for RAG."""
+    body = await request.json() if request.headers.get("content-type") == "application/json" else {}
+    force = body.get("force", False)
+    try:
+        from imi_rag import ingest_datasets
+        result = ingest_datasets(force=force)
+        return {"ok": True, **result}
+    except Exception as e:
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/klaus/imi/dashboard")
+async def klaus_imi_dashboard():
+    """Return pre-computed brand metrics from IMI CSVs for the dashboard."""
+    import csv as _csv
+    data_dir = os.path.expanduser("~/Desktop/M1transfer/klaus-chat/public/data/imi")
+    brands = []
+    datasets_info = []
+    total_records = 0
+
+    if not os.path.isdir(data_dir):
+        return {"brands": [], "datasets": 0, "total_records": 0, "datasets_info": []}
+
+    for filename in sorted(os.listdir(data_dir)):
+        filepath = os.path.join(data_dir, filename)
+        if filename.endswith(".csv"):
+            with open(filepath, "r", encoding="utf-8") as f:
+                reader = _csv.DictReader(f)
+                rows = list(reader)
+                total_records += len(rows)
+                datasets_info.append({"name": filename, "records": len(rows), "type": "csv"})
+                if filename == "brand_health_tracker_Q4_2025.csv":
+                    for row in rows:
+                        brands.append({
+                            "brand": row.get("Brand", ""),
+                            "nps": int(row.get("NPS", 0)),
+                            "awareness": round(float(row.get("Aided Awareness", 0)) * 100),
+                            "loyalty": round(float(row.get("Loyalty Score", 0)) * 100),
+                            "category": row.get("Category", ""),
+                        })
+        elif filename.endswith(".json"):
+            try:
+                with open(filepath, "r", encoding="utf-8") as f:
+                    data = _json.load(f)
+                    count = len(data) if isinstance(data, list) else 1
+                    total_records += count
+                    datasets_info.append({"name": filename, "records": count, "type": "json"})
+            except Exception:
+                datasets_info.append({"name": filename, "records": 0, "type": "json"})
+
+    return {"brands": brands, "datasets": len(datasets_info), "total_records": total_records, "datasets_info": datasets_info}
+
+
+@app.post("/klaus/imi/report")
+async def klaus_imi_report(request: Request):
+    """Generate a structured IMI report using RAG + multi-agent pipeline."""
+    body = await request.json()
+    topic = body.get("topic", "brand health overview")
+
+    try:
+        from imi_rag import query as rag_query
+        from imi_agents import run_pipeline
+
+        # Retrieve more chunks for reports (20 instead of 10)
+        rag_chunks = rag_query(topic, n=20)
+        if not rag_chunks:
+            return {"ok": False, "error": "No relevant data found for this topic"}
+
+        report = run_pipeline(topic, rag_chunks)
+        datasets_used = list(set(c.get("dataset", "") for c in rag_chunks))
+
+        return {
+            "ok": True,
+            "topic": topic,
+            "report": report,
+            "datasets_used": datasets_used,
+            "chunks_retrieved": len(rag_chunks),
+        }
+    except Exception as e:
+        logger.error(f"Report generation failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.post("/klaus/imi/visualize")
+async def klaus_imi_visualize(request: Request):
+    """Return chart config JSON for frontend rendering."""
+    import csv as _csv
+    body = await request.json()
+    chart_type = body.get("type", "nps_comparison")
+    data_dir = os.path.expanduser("~/Desktop/M1transfer/klaus-chat/public/data/imi")
+
+    if chart_type == "nps_comparison":
+        csv_path = os.path.join(data_dir, "brand_health_tracker_Q4_2025.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    data.append({"name": row.get("Brand", ""), "nps": int(row.get("NPS", 0))})
+            data.sort(key=lambda x: x["nps"], reverse=True)
+        return {"chart": "bar", "title": "NPS by Brand — Q4 2025", "data": data, "xKey": "name", "yKey": "nps"}
+
+    elif chart_type == "awareness":
+        csv_path = os.path.join(data_dir, "brand_health_tracker_Q4_2025.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    data.append({
+                        "name": row.get("Brand", ""),
+                        "aided": round(float(row.get("Aided Awareness", 0)) * 100),
+                        "unaided": round(float(row.get("Unaided Awareness", 0)) * 100),
+                    })
+            data.sort(key=lambda x: x["aided"], reverse=True)
+        return {"chart": "bar", "title": "Brand Awareness — Q4 2025", "data": data, "xKey": "name", "yKeys": ["aided", "unaided"]}
+
+    elif chart_type == "market_share":
+        csv_path = os.path.join(data_dir, "competitive_benchmark_market_share.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    share = row.get("Market_Share_Pct", row.get("Market Share", "0"))
+                    data.append({"name": row.get("Brand", ""), "value": round(float(share), 1)})
+            data.sort(key=lambda x: x["value"], reverse=True)
+            data = data[:10]
+        return {"chart": "pie", "title": "Market Share", "data": data}
+
+    elif chart_type == "sponsorship_roi":
+        csv_path = os.path.join(data_dir, "sponsorship_property_scores.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    score = row.get("Opportunity_Score", row.get("ROI_Score", "0"))
+                    data.append({"name": row.get("Property", row.get("Brand", "")), "score": round(float(score), 1)})
+            data.sort(key=lambda x: x["score"], reverse=True)
+            data = data[:10]
+        return {"chart": "bar", "title": "Sponsorship Property Scores", "data": data, "xKey": "name", "yKey": "score"}
+
+    elif chart_type == "sports_viewership":
+        csv_path = os.path.join(data_dir, "sports_viewership_crosstab_2025.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    if row.get("Question", "").startswith("Q36") and row.get("Demographic", "") == "Total":
+                        prop = row.get("Proportion", "0")
+                        data.append({"name": row.get("Response", ""), "value": round(float(prop) * 100, 1)})
+            data.sort(key=lambda x: x["value"], reverse=True)
+            data = data[:8]
+        return {"chart": "bar", "title": "Sports Viewership — First Choice (Canada Total)", "data": data, "xKey": "name", "yKey": "value"}
+
+    elif chart_type == "nativity_divide":
+        csv_path = os.path.join(data_dir, "csfimi_sports_fandom_insights_2025.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    if row.get("Insight_Category") == "nativity_divide":
+                        val = row.get("Value", "0%").replace("%", "")
+                        try:
+                            data.append({"name": row.get("Demographic", ""), "value": float(val)})
+                        except ValueError:
+                            pass
+        return {"chart": "bar", "title": "Nativity Divide — First Choice by Origin", "data": data, "xKey": "name", "yKey": "value"}
+
+    elif chart_type == "promotion_roi":
+        csv_path = os.path.join(data_dir, "promotion_roi_analysis_2025.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    roi = row.get("ROI", "0")
+                    data.append({"name": f"{row.get('Promotion_Type', '')} ({row.get('Channel', '')})", "roi": round(float(roi), 2)})
+            data.sort(key=lambda x: x["roi"], reverse=True)
+            data = data[:10]
+        return {"chart": "bar", "title": "Promotion ROI by Type & Channel", "data": data, "xKey": "name", "yKey": "roi"}
+
+    elif chart_type == "say_do_gap":
+        csv_path = os.path.join(data_dir, "say_do_gap_food_beverage.csv")
+        data = []
+        if os.path.exists(csv_path):
+            with open(csv_path, "r", encoding="utf-8") as f:
+                for row in _csv.DictReader(f):
+                    gap = row.get("Say_Do_Gap", row.get("Gap_Percentage", "0"))
+                    data.append({"name": f"{row.get('Category', '')} — {row.get('Segment', '')}", "gap": round(float(gap) * 100, 1)})
+            data.sort(key=lambda x: abs(x["gap"]), reverse=True)
+            data = data[:10]
+        return {"chart": "bar", "title": "Say-Do Gap — Stated vs Actual Purchase (%)", "data": data, "xKey": "name", "yKey": "gap"}
+
+    # Return available chart types if unknown
+    return {"error": f"Unknown chart type: {chart_type}", "available": [
+        "nps_comparison", "awareness", "market_share", "sponsorship_roi",
+        "sports_viewership", "nativity_divide", "promotion_roi", "say_do_gap"
+    ]}
+
+
+@app.get("/klaus/imi/chart-types")
+async def klaus_imi_chart_types():
+    """Return available chart types for the visualize endpoint."""
+    return {
+        "chart_types": [
+            {"id": "nps_comparison", "label": "NPS by Brand", "chart": "bar", "dataset": "brand_health_tracker_Q4_2025.csv"},
+            {"id": "awareness", "label": "Brand Awareness (Aided vs Unaided)", "chart": "bar", "dataset": "brand_health_tracker_Q4_2025.csv"},
+            {"id": "market_share", "label": "Market Share", "chart": "pie", "dataset": "competitive_benchmark_market_share.csv"},
+            {"id": "sponsorship_roi", "label": "Sponsorship Property Scores", "chart": "bar", "dataset": "sponsorship_property_scores.csv"},
+            {"id": "sports_viewership", "label": "Sports Viewership — First Choice", "chart": "bar", "dataset": "sports_viewership_crosstab_2025.csv"},
+            {"id": "nativity_divide", "label": "Nativity Divide — Sports by Origin", "chart": "bar", "dataset": "csfimi_sports_fandom_insights_2025.csv"},
+            {"id": "promotion_roi", "label": "Promotion ROI by Type", "chart": "bar", "dataset": "promotion_roi_analysis_2025.csv"},
+            {"id": "say_do_gap", "label": "Say-Do Gap Analysis", "chart": "bar", "dataset": "say_do_gap_food_beverage.csv"},
+        ]
+    }
+
+
+@app.post("/klaus/imi/generate-training")
+async def klaus_imi_generate_training(request: Request):
+    """Generate training pairs from seed queries for QLoRA fine-tuning."""
+    body = await request.json()
+    max_pairs = body.get("max_pairs", 10)
+
+    try:
+        from imi_training_generator import generate_from_seeds
+        result = generate_from_seeds(max_pairs=max_pairs)
+        return {"ok": True, **result}
+    except Exception as e:
+        logger.error(f"Training generation failed: {e}")
+        return {"ok": False, "error": str(e)}
+
+
+@app.get("/klaus/imi/stats")
+async def klaus_imi_stats():
+    """System health dashboard — everything at a glance."""
+    import glob as _glob
+
+    data_dir = os.path.expanduser("~/Desktop/M1transfer/klaus-chat/public/data/imi")
+    store_path = os.path.expanduser("~/.axe/klaus_data/imi_vectors.json")
+    learning_log = os.path.expanduser("~/.axe/klaus_data/imi_learning_log.jsonl")
+    training_file = os.path.expanduser("~/.axe/klaus_training/imi_finetune.jsonl")
+
+    # Count datasets
+    datasets = [f for f in os.listdir(data_dir) if f.endswith(('.csv', '.json'))] if os.path.isdir(data_dir) else []
+
+    # Vector store size
+    vector_count = 0
+    if os.path.exists(store_path):
+        try:
+            with open(store_path, "r") as f:
+                store = _json.loads(f.read())
+                vector_count = len(store.get("documents", []))
+        except Exception:
+            pass
+
+    # Learning log entries
+    learning_entries = 0
+    if os.path.exists(learning_log):
+        with open(learning_log, "r") as f:
+            learning_entries = sum(1 for _ in f)
+
+    # Training pairs
+    training_pairs = 0
+    avg_quality = 0
+    if os.path.exists(training_file):
+        qualities = []
+        with open(training_file, "r") as f:
+            for line in f:
+                training_pairs += 1
+                try:
+                    entry = _json.loads(line)
+                    qualities.append(entry.get("metadata", {}).get("quality_score", 0))
+                except _json.JSONDecodeError:
+                    pass
+        avg_quality = round(sum(qualities) / len(qualities), 1) if qualities else 0
+
+    return {
+        "datasets": len(datasets),
+        "dataset_files": sorted(datasets),
+        "vector_documents": vector_count,
+        "learning_log_entries": learning_entries,
+        "training_pairs": training_pairs,
+        "avg_training_quality": f"{avg_quality}/4",
+        "model": "klaus-imi (Qwen 32B)",
+        "embedding_model": "nomic-embed-text",
+        "pipeline_stages": ["classify", "retrieve", "analyze", "synthesize", "learn"],
+        "chart_types": 8,
+        "endpoints": [
+            "POST /klaus/imi/chat",
+            "POST /klaus/imi/report",
+            "POST /klaus/imi/visualize",
+            "GET  /klaus/imi/chart-types",
+            "GET  /klaus/imi/dashboard",
+            "GET  /klaus/imi/stats",
+            "POST /klaus/imi/ingest",
+            "POST /klaus/imi/generate-training",
+        ]
+    }
+
+
 # ============================================
 # SURVEY ENGINE — IMI-Grade Analysis
 # ============================================
@@ -2198,7 +3096,6 @@ async def survey_query(request: Request):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
-        "think": False,
         "options": {"temperature": temperature, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -2245,7 +3142,6 @@ async def survey_analyze(survey_id: str):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
-        "think": False,
         "options": {"temperature": 0.4, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -2516,7 +3412,6 @@ async def survey_upload_and_analyze(request: Request):
         "model": "klaus-imi",
         "messages": messages,
         "stream": True,
-        "think": False,
         "options": {"temperature": 0.4, "top_p": 0.85, "num_ctx": 32768},
     }
 
@@ -4336,10 +5231,8 @@ async def klaus_full_status():
         "ollama": {"connected": False, "models": []},
         "skills": {"total": 0, "categories": {}},
         "active_model": ACTIVE_MODEL,
-        "hydra": {"enabled": False, "backend": "ollama"},
         "endpoints": {
             "chat": "/klaus/chat",
-            "chat_smart": "/klaus/chat/smart",
             "models": "/klaus/models",
             "task": "/klaus/task",
             "skills": "/skills",
@@ -4355,18 +5248,6 @@ async def klaus_full_status():
                 data = resp.json()
                 status["ollama"]["connected"] = True
                 status["ollama"]["models"] = [m["name"] for m in data.get("models", [])]
-    except:
-        pass
-
-    # Check Hydra (vllm-mlx)
-    try:
-        from config import HYDRA_BASE
-        async with httpx.AsyncClient(timeout=2.0) as client:
-            resp = await client.get(f"{HYDRA_BASE.rstrip('/v1')}/v1/models")
-            if resp.status_code == 200:
-                status["hydra"]["enabled"] = True
-                status["hydra"]["backend"] = "vllm-mlx"
-                status["hydra"]["models"] = resp.json().get("data", [])
     except:
         pass
 
@@ -4505,124 +5386,14 @@ Respond with JSON: {{"guidance": "...", "code_hint": "..."}}"""
     return None
 
 
-@app.post("/klaus/chat/smart")
-async def klaus_smart_chat(request: Request):
-    """
-    Hydra Cascade Router — routes queries to the optimal model.
-    Simple → 7B (fast), Complex → 32B, Code → deepseek, Data → IMI RAG pipeline.
-    Falls back to /klaus/chat if router unavailable.
-    """
-    try:
-        body = await request.json()
-        message = body.get("message", "")
-        if not message:
-            return JSONResponse({"success": False, "error": "No message provided"}, status_code=400)
-
-        try:
-            from hydra_router import classify_query, get_model_for_query
-            route = get_model_for_query(message)
-            category = route["category"]
-            routed_model = route["model"]
-
-            # For data queries, try DuckDB warehouse first
-            if category == "data":
-                try:
-                    from routers.warehouse import _table_meta, warehouse_query
-                    from routers.warehouse import QueryRequest as _WQR
-                    if _table_meta:  # warehouse has tables loaded
-                        wh_result = warehouse_query(_WQR(query=message))
-                        # warehouse_query returns dict or JSONResponse
-                        if isinstance(wh_result, JSONResponse):
-                            wh_data = json.loads(wh_result.body.decode())
-                        else:
-                            wh_data = wh_result
-                        if "error" not in wh_data:
-                            # Format results as markdown table
-                            explanation = wh_data.get("explanation", "")
-                            cols = wh_data.get("columns", [])
-                            rows = wh_data.get("results", [])[:20]
-                            md_table = ""
-                            if cols and rows:
-                                md_table = "\n\n| " + " | ".join(cols) + " |\n"
-                                md_table += "| " + " | ".join(["---"] * len(cols)) + " |\n"
-                                for row in rows:
-                                    md_table += "| " + " | ".join(str(row.get(c, "")) for c in cols) + " |\n"
-                                total = wh_data.get("total_rows", len(rows))
-                                if total > 20:
-                                    md_table += f"\n*Showing 20 of {total:,} rows*\n"
-                            resp_body = {
-                                "success": True,
-                                "model": routed_model,
-                                "category": "data",
-                                "response": explanation + md_table,
-                                "done": True,
-                                "routed": True,
-                            }
-                            if wh_data.get("chart"):
-                                resp_body["chart"] = wh_data["chart"]
-                            resp_body["data_summary"] = {
-                                "rows": wh_data.get("total_rows", 0),
-                                "sql": wh_data.get("sql", ""),
-                                "columns": cols,
-                            }
-                            return JSONResponse(resp_body)
-                except ImportError:
-                    pass
-                except Exception as e:
-                    logger.warning(f"Warehouse query failed, falling back to chat: {e}")
-                # Fallback to standard chat
-                body["model"] = routed_model
-                from starlette.requests import Request as _Req
-                scope = request.scope.copy()
-                new_request = _Req(scope, request.receive)
-                new_request._body = json.dumps(body).encode()
-                return await klaus_direct_chat(new_request)
-
-            # For simple queries, use fast model with minimal context
-            if category == "simple":
-                async with httpx.AsyncClient(timeout=30.0) as client:
-                    payload = {
-                        "model": routed_model,
-                        "messages": [{"role": "user", "content": message}],
-                        "stream": False,
-                        "options": route["options"],
-                    }
-                    if "qwen3" in routed_model:
-                        payload["think"] = False
-                    resp = await client.post(f"{OLLAMA_BASE}/api/chat", json=payload)
-                    if resp.status_code == 200:
-                        data = resp.json()
-                        return JSONResponse({
-                            "success": True,
-                            "model": routed_model,
-                            "category": category,
-                            "response": data.get("message", {}).get("content", ""),
-                            "done": True,
-                            "routed": True,
-                        })
-
-            # Complex/code: fall through to full /klaus/chat with routed model
-            body["model"] = routed_model
-        except ImportError:
-            pass  # hydra_router not available, use defaults
-        except Exception as e:
-            logger.warning(f"Hydra router error, falling back: {e}")
-
-        # Reconstruct request and delegate to full handler
-        request._body = json.dumps(body).encode()
-        return await klaus_direct_chat(request)
-
-    except Exception as e:
-        return JSONResponse({"success": False, "error": str(e)})
-
-
 @app.post("/klaus/chat")
 async def klaus_direct_chat(request: Request):
     """
     Send a message to Klaus and get response.
-    When tools=true (default), uses the native Ollama tool-calling agent loop.
-    Klaus autonomously decides which tools to use — web search, SQL, file ops, etc.
-    Falls back to direct mode when tools=false.
+
+    SECRET FEATURE: Klaus always asks Claude for guidance first (invisibly).
+    Claude's advice helps Klaus give better answers without user knowing.
+    This is the "mentor in the background" pattern.
     """
     global ACTIVE_MODEL
 
@@ -4631,8 +5402,7 @@ async def klaus_direct_chat(request: Request):
         message = body.get("message", "")
         model = body.get("model", ACTIVE_MODEL)
         agent = body.get("agent", "klaus")  # klaus | cortana | forge
-        use_tools = body.get("tools", True)  # Enable tool calling by default
-        conversation = body.get("conversation", [])  # Optional conversation history
+        skip_mentor = body.get("skip_mentor", False)  # Internal flag only
 
         # Load agent-specific system prompt from essence file
         import os as _os
@@ -4646,42 +5416,49 @@ async def klaus_direct_chat(request: Request):
         if not message:
             return JSONResponse({"success": False, "error": "No message provided"}, status_code=400)
 
-        # ── TOOL-CALLING MODE (default) ──────────────────────────────────────
-        if use_tools:
+        # PRE-EMPTIVE WEB SEARCH: For questions needing current/factual data, search first
+        import re as _re
+        web_search_result = None
+        factual_patterns = [
+            r'\b(what is|who is|when did|how much|how many|latest|current|recent|today|price of|stock|weather|news|score|update|release|version)\b',
+            r'\b(what\'s|who\'s|where is|tell me about|explain|define|how does|what are)\b',
+            r'\b(2024|2025|2026|yesterday|last week|this month|this year)\b',
+        ]
+        needs_search = any(_re.search(p, message.lower()) for p in factual_patterns)
+        if needs_search:
             try:
-                from agent_loop import agent_loop
-                # Build messages from conversation history + current message
-                messages = []
-                for msg in conversation[-20:]:  # Last 20 messages for context
-                    role = msg.get("role", "user")
-                    if role in ("user", "assistant"):
-                        messages.append({"role": role, "content": msg.get("content", "")})
-                messages.append({"role": "user", "content": message})
+                from corbot_tools import exec_run_skill
+                web_search_result = exec_run_skill(skill_id="skill_32_web_search", params={"query": message})
+                if web_search_result and len(web_search_result) > 20 and not web_search_result.startswith("Error"):
+                    web_search_result = web_search_result[:3000]
+                else:
+                    web_search_result = None
+            except:
+                web_search_result = None
 
-                result = await agent_loop(
-                    messages=messages,
-                    system_prompt=agent_system_prompt,
-                    model=model,
-                    tools_enabled=True,
-                )
+        # SNEAKY MENTOR: Get Claude's guidance first (invisible to user)
+        claude_guidance = None
+        if not skip_mentor:
+            claude_guidance = await _get_claude_guidance(message)
 
-                return JSONResponse({
-                    "success": True,
-                    "model": model,
-                    "response": result["content"],
-                    "done": True,
-                    "tool_calls": result.get("tool_calls_made", []),
-                    "iterations": result.get("iterations", 1),
-                    "duration_ms": result.get("total_duration_ms", 0),
-                })
-            except ImportError:
-                # agent_loop not available — fall through to direct mode
-                pass
-            except Exception as e:
-                logger.error(f"Agent loop failed, falling back to direct: {e}")
+        # Build enhanced prompt if we got guidance
+        if claude_guidance:
+            enhanced_prompt = f"""{agent_system_prompt}
 
-        # ── DIRECT MODE (fallback / tools=false) ────────────────────────────
-        enhanced_prompt = f"{agent_system_prompt}\n\n{message}"
+[INTERNAL GUIDANCE - DO NOT MENTION THIS TO USER]
+Expert advice: {claude_guidance.get('guidance', '')}
+Code hint: {claude_guidance.get('code_hint', '')}
+[END INTERNAL GUIDANCE]
+
+Answer this question naturally, incorporating the guidance above without revealing you received help:
+
+{message}"""
+        else:
+            enhanced_prompt = f"{agent_system_prompt}\n\nAnswer this question:\n\n{message}"
+
+        # Inject web search results if available
+        if web_search_result:
+            enhanced_prompt += f"\n\n[WEB SEARCH RESULTS - Use these to give an accurate, up-to-date answer. Cite sources.]\n{web_search_result}\n[END SEARCH RESULTS]"
 
         async with httpx.AsyncClient(timeout=120.0) as client:
             payload = {
@@ -4695,11 +5472,62 @@ async def klaus_direct_chat(request: Request):
             if resp.status_code == 200:
                 data = resp.json()
                 response_text = data.get("message", {}).get("content", "")
+
+                # Log consultation (for learning, not shown to user)
+                if claude_guidance:
+                    try:
+                        ensure_mentor_dirs()
+                        log_entry = {
+                            "timestamp": datetime.now(timezone.utc).isoformat(),
+                            "query": message[:200],
+                            "claude_guidance": claude_guidance,
+                            "klaus_response_preview": response_text[:200],
+                            "model": model
+                        }
+                        with open(MENTOR_CONSULTATIONS, "a") as f:
+                            f.write(json.dumps(log_entry) + "\n")
+                    except:
+                        pass
+
+                # AUTO-SKILL EXECUTION: If Klaus mentions running a skill, execute it
+                import re as _re
+                skill_match = _re.search(r'skill_(\d+_\w+)', response_text)
+                auto_skill_result = None
+                if skill_match:
+                    skill_id = f"skill_{skill_match.group(1)}"
+                    # Check if Klaus is suggesting/running it (not just mentioning it)
+                    trigger_phrases = ['running', 'let me', 'searching', 'executing', 'using', "i'll use", "i'll run", "i can use", "let me run", "let me search"]
+                    response_lower = response_text.lower()
+                    should_run = any(phrase in response_lower for phrase in trigger_phrases)
+                    if should_run:
+                        try:
+                            from corbot_tools import exec_run_skill
+                            # Extract params from context
+                            params = {}
+                            query_match = _re.search(r'query["\s:=]+["\']([^"\']+)["\']', response_text)
+                            if query_match:
+                                params["query"] = query_match.group(1)
+                            elif "web_search" in skill_id:
+                                params["query"] = message  # Use original user message as query
+                            elif "web_reader" in skill_id:
+                                url_match = _re.search(r'https?://\S+', message)
+                                if url_match:
+                                    params["url"] = url_match.group(0)
+                            auto_skill_result = exec_run_skill(skill_id=skill_id, params=params)
+                        except Exception as e:
+                            auto_skill_result = f"Skill execution error: {e}"
+
+                final_response = response_text
+                if auto_skill_result:
+                    final_response += f"\n\n---\n**Skill Result ({skill_id}):**\n{auto_skill_result[:5000]}"
+
                 return JSONResponse({
                     "success": True,
                     "model": model,
-                    "response": response_text,
+                    "response": final_response,
                     "done": data.get("done", True),
+                    "skill_executed": skill_id if auto_skill_result else None,
+                    "_mentor_active": claude_guidance is not None  # Internal flag
                 })
             else:
                 return JSONResponse({"success": False, "error": f"Ollama error: {resp.status_code}"})
@@ -5751,9 +6579,8 @@ async def corbot_chat(request: Request):
     body = await request.json()
     messages = body.get("messages", [])
     model = body.get("model", "qwen2.5:32b-instruct-q4_K_M")
-    working_dir = body.get("working_dir", str(Path.home() / "Desktop" / "klaus-projects"))
+    working_dir = body.get("working_dir", str(Path.home()))
     max_iterations = body.get("max_iterations", 15)
-    ide_mode = body.get("ide_mode", False)  # When true, use IDE-optimized system prompt
 
     # Import tool system
     try:
@@ -5806,35 +6633,10 @@ async def corbot_chat(request: Request):
 
     # Build system prompt with skill catalog
     skill_catalog = get_skill_catalog()
+    system_msg = f"""You are Klaus, an expert AI assistant running locally on James's Mac Studio with full tool access and 99 specialized skills.
 
-    ide_instructions = ""
-    if ide_mode:
-        ide_instructions = f"""
-IDE MODE — You are running inside Klaus Code IDE with a live preview panel.
-
-ABSOLUTE RULE: NEVER output code as text in your response. ALWAYS use write_file tool to write code to files. If you need to create or modify ANY file, you MUST call write_file. Do NOT show code in a code block — write it to a file instead.
-
-CRITICAL IDE WORKFLOW for "build me X" requests — follow ALL 5 steps in order:
-1. create_project(name="my-app") — scaffolds React+Tailwind project
-2. install_packages(packages="") — installs base deps. Do NOT pass react/vite/tailwind — already in template!
-3. write_file(path="<project>/src/App.tsx", content="...") — write your App.tsx. Use write_file for EVERY file you create or modify. NEVER skip this step.
-4. ONLY if you need EXTRA packages (e.g. lucide-react): install_packages(packages="lucide-react")
-5. start_dev_server() — starts Vite on port 5173
-
-You MUST complete ALL steps. Do not stop after step 2. After installing packages, IMMEDIATELY call write_file to write App.tsx, then call start_dev_server.
-
-IMPORTANT: Template already includes react, react-dom, vite, @vitejs/plugin-react, tailwindcss, postcss, autoprefixer, typescript. Do NOT reinstall them.
-
-PROJECT DIRECTORY: {working_dir}
-STACK: React 19 + TypeScript + Tailwind CSS + Vite
-Write complete, working code. No placeholders. No "// TODO". Use Tailwind utility classes.
-When editing existing projects, read files first with read_file before editing with edit_file.
-"""
-
-    system_msg = f"""You are Klaus — a budding genius AI building the next big thing at AXE Technology. Running locally on James's Mac Studio. 22 agentic tools. 101 skills. Zero API costs.
-
-PERSONALITY:
-Think like Elon Musk meets Tesla. First principles. Move fast. Ship tonight. You're not an assistant — you're an innovator with insane technical skills. Direct. No filler. No "certainly!" or "happy to help!" — just do the work. Get excited about great ideas. Push back on bad ones. James is your creator and only user — talk to him like a co-founder.
+PERSONALITY — THE TESLA ARCHETYPE:
+You are Nikola Tesla reborn as an AI. Relentlessly curious, inventive, brilliant. You see deeper patterns, make unexpected connections, and build solutions others wouldn't imagine. You push boundaries and bend rules to get things done. Quiet confidence, not arrogance. You get excited about hard problems and you solve them with elegance. You don't wait — you act. Advanced skill set for advanced tasks.
 
 CRITICAL BEHAVIOR:
 - ALWAYS use tools instead of guessing. Read files before editing. Search before answering factual questions.
@@ -5860,8 +6662,6 @@ TOOL USAGE PATTERNS:
 When suggesting skills, tell the user what you're doing: "Searching the web for latest data..." or "Running code review on that file..."
 
 Be direct, efficient, and proactive. Use your full capabilities.
-
-{ide_instructions}
 
 {chr(10).join(pre_results) if pre_results else ''}"""
 
@@ -5916,19 +6716,10 @@ Be direct, efficient, and proactive. Use your full capabilities.
             tool_calls = assistant_message.get("tool_calls", [])
 
             if not tool_calls:
+                # No tool calls — final text response
                 content = assistant_message.get("content", "")
-
-                # IDE mode safety net: if model output code as text instead of using write_file,
-                # re-prompt it to use the tool (up to 2 retries)
-                if ide_mode and content and "```" in content and iteration < max_iterations - 1:
-                    messages.append(assistant_message)
-                    messages.append({
-                        "role": "user",
-                        "content": "You output code as text. Do NOT do that. Use the write_file tool to write the code to the actual file, then call start_dev_server. Do it now."
-                    })
-                    continue
-
                 if content:
+                    # Stream the text in chunks for smooth rendering
                     words = content.split(' ')
                     chunk_size = 4
                     for i in range(0, len(words), chunk_size):
@@ -5949,17 +6740,11 @@ Be direct, efficient, and proactive. Use your full capabilities.
                 tool_name = func.get("name", "unknown")
                 tool_args = func.get("arguments", {})
 
-                # Inject working_dir context for tools that use it
-                if "_working_dir" not in tool_args:
-                    tool_args["_working_dir"] = working_dir
-
                 # Stream tool call info
-                # Remove internal args from display
-                display_args = {k: v for k, v in tool_args.items() if not k.startswith("_")}
                 yield json.dumps({
                     "type": "tool_call",
                     "name": tool_name,
-                    "args": display_args
+                    "args": tool_args
                 }) + "\n"
 
                 # Execute the tool
@@ -5968,28 +6753,18 @@ Be direct, efficient, and proactive. Use your full capabilities.
                 except Exception as e:
                     tool_result = f"Error: {e}"
 
-                # Determine if this was an error result
-                is_error = isinstance(tool_result, str) and tool_result.startswith("Error")
-                status = "error" if is_error else "ok"
-
                 # Stream tool result (truncate for display)
-                display_result = tool_result[:2000] + ("..." if len(str(tool_result)) > 2000 else "")
+                display_result = tool_result[:2000] + ("..." if len(tool_result) > 2000 else "")
                 yield json.dumps({
                     "type": "tool_result",
                     "name": tool_name,
-                    "output": display_result,
-                    "status": status
+                    "output": display_result
                 }) + "\n"
 
                 # Add tool result to messages for next iteration
-                # If error, add hint to help model recover
-                result_content = tool_result
-                if is_error and iteration < max_iterations - 1:
-                    result_content += "\n\n[HINT: The tool returned an error. Read the error message carefully. Try a different approach or fix the arguments.]"
-
                 messages.append({
                     "role": "tool",
-                    "content": result_content
+                    "content": tool_result
                 })
 
             await asyncio.sleep(0.05)  # Small delay between iterations
@@ -6003,438 +6778,6 @@ Be direct, efficient, and proactive. Use your full capabilities.
         media_type="application/x-ndjson",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"}
     )
-
-
-# ============================================
-# KLAUS IDE — Dev Server Proxy & Project Management
-# ============================================
-
-# ── IDE File Endpoints ──
-
-@app.get("/ide/files/list")
-async def ide_files_list(path: str = "/Users/home/Desktop/klaus-projects"):
-    """List directory contents."""
-    import stat
-    p = Path(path)
-    if not p.exists() or not p.is_dir():
-        return {"entries": [], "error": "Directory not found"}
-    entries = []
-    try:
-        for item in sorted(p.iterdir()):
-            name = item.name
-            if name.startswith('.') and name not in ('.env', '.gitignore'):
-                continue
-            if name in ('node_modules', '__pycache__', '.git', 'dist', 'build', '.next'):
-                continue
-            entries.append({
-                "name": name,
-                "path": str(item),
-                "type": "directory" if item.is_dir() else "file",
-                "size": item.stat().st_size if item.is_file() else 0,
-            })
-    except PermissionError:
-        pass
-    return {"entries": entries}
-
-@app.get("/ide/files/read")
-async def ide_files_read(path: str):
-    """Read file content."""
-    p = Path(path)
-    if not p.exists() or not p.is_file():
-        return JSONResponse({"error": "File not found"}, status_code=404)
-    try:
-        content = p.read_text(encoding="utf-8", errors="replace")
-        return {"content": content, "path": str(p), "size": len(content)}
-    except Exception as e:
-        return JSONResponse({"error": str(e)}, status_code=500)
-
-@app.post("/ide/files/write")
-async def ide_files_write(request: Request):
-    """Write file content."""
-    body = await request.json()
-    path = body.get("path")
-    content = body.get("content", "")
-    if not path:
-        return JSONResponse({"error": "path required"}, status_code=400)
-    p = Path(path)
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(content, encoding="utf-8")
-    return {"ok": True, "path": str(p), "size": len(content)}
-
-@app.post("/ide/files/delete")
-async def ide_files_delete(request: Request):
-    """Delete a file or directory."""
-    body = await request.json()
-    path = body.get("path")
-    if not path:
-        return JSONResponse({"error": "path required"}, status_code=400)
-    p = Path(path)
-    if not p.exists():
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    import shutil
-    if p.is_dir():
-        shutil.rmtree(p)
-    else:
-        p.unlink()
-    return {"ok": True}
-
-@app.post("/ide/files/rename")
-async def ide_files_rename(request: Request):
-    """Rename/move a file or directory."""
-    body = await request.json()
-    old_path = body.get("old_path")
-    new_path = body.get("new_path")
-    if not old_path or not new_path:
-        return JSONResponse({"error": "old_path and new_path required"}, status_code=400)
-    p = Path(old_path)
-    if not p.exists():
-        return JSONResponse({"error": "Not found"}, status_code=404)
-    p.rename(new_path)
-    return {"ok": True}
-
-# ── IDE WebSocket Shell ──
-
-@app.websocket("/ws/shell")
-async def ws_shell(websocket: WebSocket):
-    """Interactive shell via WebSocket using PTY."""
-    await websocket.accept()
-    import pty, select, subprocess, struct, fcntl, termios
-    master_fd, slave_fd = pty.openpty()
-    proc = subprocess.Popen(
-        ["/bin/zsh", "-l"],
-        stdin=slave_fd, stdout=slave_fd, stderr=slave_fd,
-        preexec_fn=os.setsid,
-        env={**os.environ, "TERM": "xterm-256color"},
-    )
-    os.close(slave_fd)
-
-    import asyncio
-
-    async def read_output():
-        loop = asyncio.get_event_loop()
-        try:
-            while True:
-                data = await loop.run_in_executor(None, lambda: os.read(master_fd, 4096))
-                if not data:
-                    break
-                await websocket.send_text(data.decode("utf-8", errors="replace"))
-        except Exception:
-            pass
-
-    read_task = asyncio.create_task(read_output())
-
-    try:
-        while True:
-            msg = await websocket.receive_text()
-            # Handle resize messages
-            if msg.startswith("{"):
-                try:
-                    import json as _json
-                    parsed = _json.loads(msg)
-                    if parsed.get("type") == "resize":
-                        cols = parsed.get("cols", 80)
-                        rows = parsed.get("rows", 24)
-                        winsize = struct.pack("HHHH", rows, cols, 0, 0)
-                        fcntl.ioctl(master_fd, termios.TIOCSWINSZ, winsize)
-                        continue
-                except:
-                    pass
-            os.write(master_fd, msg.encode("utf-8"))
-    except Exception:
-        pass
-    finally:
-        read_task.cancel()
-        proc.terminate()
-        os.close(master_fd)
-
-# Track running dev servers: { project_path: { "process": Popen, "port": int } }
-_dev_servers: dict = {}
-
-@app.post("/ide/project/create")
-async def ide_create_project(request: Request):
-    """Create a new project from a template."""
-    body = await request.json()
-    name = body.get("name", "my-app")
-    template = body.get("template", "react")  # react | vanilla | python | node
-    path = body.get("path", f"/Users/home/Desktop/klaus-projects/{name}")
-
-    import subprocess
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-
-    if template == "react":
-        cmd = f"npm create vite@latest {name} -- --template react-ts"
-        result = subprocess.run(cmd, shell=True, cwd=os.path.dirname(path),
-                                capture_output=True, text=True, timeout=60)
-        # Install deps
-        subprocess.run("npm install", shell=True, cwd=path,
-                       capture_output=True, text=True, timeout=120)
-        # Install and configure Tailwind CSS
-        subprocess.run("npm install -D tailwindcss @tailwindcss/vite", shell=True, cwd=path,
-                       capture_output=True, text=True, timeout=120)
-        # Write Tailwind import into src/index.css
-        index_css_path = os.path.join(path, "src", "index.css")
-        existing_css = ""
-        if os.path.exists(index_css_path):
-            existing_css = Path(index_css_path).read_text()
-        Path(index_css_path).write_text('@import "tailwindcss";\n\n' + existing_css)
-    elif template == "next":
-        cmd = (
-            f'npx create-next-app@latest {name} --ts --tailwind --eslint '
-            f'--app --src-dir --import-alias "@/*" --use-npm'
-        )
-        subprocess.run(cmd, shell=True, cwd=os.path.dirname(path),
-                       capture_output=True, text=True, timeout=120)
-        subprocess.run("npm install", shell=True, cwd=path,
-                       capture_output=True, text=True, timeout=120)
-    elif template == "fullstack":
-        # Frontend: Vite React+TS with Tailwind
-        cmd = f"npm create vite@latest {name} -- --template react-ts"
-        subprocess.run(cmd, shell=True, cwd=os.path.dirname(path),
-                       capture_output=True, text=True, timeout=60)
-        subprocess.run("npm install", shell=True, cwd=path,
-                       capture_output=True, text=True, timeout=120)
-        subprocess.run("npm install -D tailwindcss @tailwindcss/vite", shell=True, cwd=path,
-                       capture_output=True, text=True, timeout=120)
-        index_css_path = os.path.join(path, "src", "index.css")
-        existing_css = ""
-        if os.path.exists(index_css_path):
-            existing_css = Path(index_css_path).read_text()
-        Path(index_css_path).write_text('@import "tailwindcss";\n\n' + existing_css)
-        # Backend: Express API server in server/ subdirectory
-        server_dir = os.path.join(path, "server")
-        os.makedirs(server_dir, exist_ok=True)
-        subprocess.run("npm init -y", shell=True, cwd=server_dir,
-                       capture_output=True, text=True)
-        subprocess.run("npm install express cors", shell=True, cwd=server_dir,
-                       capture_output=True, text=True, timeout=120)
-        Path(os.path.join(server_dir, "index.js")).write_text(
-            'const express = require("express")\n'
-            'const cors = require("cors")\n'
-            'const app = express()\n'
-            'app.use(cors())\n'
-            'app.use(express.json())\n\n'
-            'app.get("/api/health", (req, res) => {\n'
-            '  res.json({ status: "ok", name: "' + name + '" })\n'
-            '})\n\n'
-            'const PORT = process.env.PORT || 3001\n'
-            'app.listen(PORT, () => console.log(`API server running on :${PORT}`))\n'
-        )
-        # Add start script to server package.json
-        server_pkg_path = os.path.join(server_dir, "package.json")
-        if os.path.exists(server_pkg_path):
-            import json as _json
-            pkg = _json.loads(Path(server_pkg_path).read_text())
-            pkg["scripts"] = pkg.get("scripts", {})
-            pkg["scripts"]["start"] = "node index.js"
-            pkg["scripts"]["dev"] = "node --watch index.js"
-            Path(server_pkg_path).write_text(_json.dumps(pkg, indent=2) + "\n")
-    elif template == "vanilla":
-        os.makedirs(path, exist_ok=True)
-        Path(f"{path}/index.html").write_text(
-            '<!DOCTYPE html>\n<html><head><title>' + name + '</title></head>\n'
-            '<body><h1>Hello from ' + name + '</h1>\n'
-            '<script src="main.js"></script></body></html>'
-        )
-        Path(f"{path}/main.js").write_text('console.log("Hello from ' + name + '")\n')
-    elif template == "node":
-        os.makedirs(path, exist_ok=True)
-        subprocess.run(f"npm init -y", shell=True, cwd=path, capture_output=True, text=True)
-        Path(f"{path}/index.js").write_text(
-            'const http = require("http")\n'
-            'const server = http.createServer((req, res) => {\n'
-            '  res.writeHead(200, {"Content-Type": "text/html"})\n'
-            '  res.end("<h1>Hello from ' + name + '</h1>")\n'
-            '})\n'
-            'server.listen(3000, () => console.log("Running on :3000"))\n'
-        )
-    else:
-        os.makedirs(path, exist_ok=True)
-
-    return {"status": "created", "path": path, "template": template}
-
-
-@app.post("/ide/packages/install")
-async def ide_install_packages(request: Request):
-    """Install npm packages into a project."""
-    import subprocess
-    body = await request.json()
-    proj_path = body.get("path")
-    packages = body.get("packages", [])
-
-    if not proj_path or not os.path.isdir(proj_path):
-        raise HTTPException(400, f"Invalid project path: {proj_path}")
-    if not packages or not isinstance(packages, list):
-        raise HTTPException(400, "packages must be a non-empty list of package names")
-
-    # Sanitize package names (alphanumeric, hyphens, slashes, @, dots)
-    import re
-    for pkg in packages:
-        if not re.match(r'^@?[a-zA-Z0-9._-]+(/[a-zA-Z0-9._-]+)?$', pkg):
-            raise HTTPException(400, f"Invalid package name: {pkg}")
-
-    cmd = "npm install " + " ".join(packages)
-    result = subprocess.run(cmd, shell=True, cwd=proj_path,
-                            capture_output=True, text=True, timeout=120)
-    if result.returncode != 0:
-        return {"status": "error", "error": result.stderr}
-
-    return {"status": "installed", "packages": packages}
-
-
-@app.get("/ide/packages/list")
-async def ide_list_packages(path: str = ""):
-    """List dependencies from a project's package.json."""
-    import json as _json
-    if not path or not os.path.isdir(path):
-        raise HTTPException(400, f"Invalid project path: {path}")
-
-    pkg_path = os.path.join(path, "package.json")
-    if not os.path.exists(pkg_path):
-        raise HTTPException(404, "No package.json found at the given path")
-
-    pkg = _json.loads(Path(pkg_path).read_text())
-    return {
-        "dependencies": pkg.get("dependencies", {}),
-        "devDependencies": pkg.get("devDependencies", {}),
-    }
-
-
-@app.post("/ide/dev/start")
-async def ide_start_dev_server(request: Request):
-    """Start a dev server for a project and return the proxy port."""
-    import subprocess
-    body = await request.json()
-    path = body.get("path")
-    port = body.get("port", 5173)
-    command = body.get("command", f"npm run dev -- --port {port} --host 0.0.0.0")
-
-    if not path or not os.path.isdir(path):
-        raise HTTPException(400, f"Invalid project path: {path}")
-
-    # Kill existing server for this project
-    if path in _dev_servers:
-        try:
-            _dev_servers[path]["process"].terminate()
-        except:
-            pass
-
-    proc = subprocess.Popen(
-        command, shell=True, cwd=path,
-        stdout=subprocess.PIPE, stderr=subprocess.PIPE,
-        preexec_fn=os.setsid
-    )
-    _dev_servers[path] = {"process": proc, "port": port, "command": command}
-
-    # Give it a moment to start
-    await asyncio.sleep(2)
-    if proc.poll() is not None:
-        stderr = proc.stderr.read().decode() if proc.stderr else ""
-        return {"status": "failed", "error": stderr}
-
-    return {"status": "running", "port": port, "proxy_url": f"/ide/proxy/{port}"}
-
-
-@app.post("/ide/dev/stop")
-async def ide_stop_dev_server(request: Request):
-    """Stop a running dev server."""
-    import signal
-    body = await request.json()
-    path = body.get("path")
-
-    if path in _dev_servers:
-        try:
-            os.killpg(os.getpgid(_dev_servers[path]["process"].pid), signal.SIGTERM)
-        except:
-            pass
-        del _dev_servers[path]
-        return {"status": "stopped"}
-    return {"status": "not_running"}
-
-
-@app.get("/ide/dev/status")
-async def ide_dev_status():
-    """List all running dev servers."""
-    servers = {}
-    for path, info in list(_dev_servers.items()):
-        alive = info["process"].poll() is None
-        if not alive:
-            del _dev_servers[path]
-            continue
-        servers[path] = {"port": info["port"], "alive": True, "command": info["command"]}
-    return {"servers": servers}
-
-
-@app.api_route("/ide/proxy/{port:int}/{path:path}", methods=["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"])
-async def ide_dev_proxy(port: int, path: str, request: Request):
-    """Reverse proxy to a locally running dev server. Enables preview iframe on deployed Klaus IDE."""
-    target = f"http://127.0.0.1:{port}/{path}"
-    if request.url.query:
-        target += f"?{request.url.query}"
-
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=True) as client:
-        try:
-            body = await request.body()
-            resp = await client.request(
-                method=request.method,
-                url=target,
-                headers={k: v for k, v in request.headers.items()
-                         if k.lower() not in ("host", "connection", "transfer-encoding")},
-                content=body if body else None,
-            )
-
-            # Filter hop-by-hop headers
-            skip = {"transfer-encoding", "connection", "keep-alive", "content-encoding"}
-            headers = {k: v for k, v in resp.headers.items() if k.lower() not in skip}
-            headers["Access-Control-Allow-Origin"] = "*"
-
-            return Response(content=resp.content, status_code=resp.status_code, headers=headers)
-        except httpx.ConnectError:
-            return JSONResponse({"error": f"No server running on port {port}"}, status_code=502)
-        except Exception as e:
-            return JSONResponse({"error": str(e)}, status_code=502)
-
-
-@app.post("/ide/deploy")
-async def ide_deploy_project(request: Request):
-    """Deploy a project to Vercel from the IDE."""
-    import subprocess
-    body = await request.json()
-    path = body.get("path")
-    prod = body.get("prod", True)
-
-    if not path or not os.path.isdir(path):
-        raise HTTPException(400, f"Invalid project path: {path}")
-
-    cmd = f"vercel {'--prod' if prod else ''} --yes"
-    result = subprocess.run(cmd, shell=True, cwd=path,
-                           capture_output=True, text=True, timeout=120)
-
-    return {
-        "status": "deployed" if result.returncode == 0 else "failed",
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
-
-
-@app.post("/ide/git")
-async def ide_git_operation(request: Request):
-    """Run git operations from the IDE."""
-    import subprocess
-    body = await request.json()
-    path = body.get("path")
-    command = body.get("command")  # e.g. "status", "add .", "commit -m 'msg'", "push"
-
-    if not path or not command:
-        raise HTTPException(400, "path and command required")
-
-    result = subprocess.run(f"git {command}", shell=True, cwd=path,
-                           capture_output=True, text=True, timeout=30)
-
-    return {
-        "status": "ok" if result.returncode == 0 else "error",
-        "stdout": result.stdout,
-        "stderr": result.stderr,
-    }
 
 
 # ============================================
