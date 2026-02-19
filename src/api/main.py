@@ -4323,7 +4323,7 @@ async def test_skill_endpoint(skill_id: str):
 import httpx
 
 OLLAMA_BASE = "http://localhost:11434"
-ACTIVE_MODEL = "qwen2.5:7b"  # Default model
+ACTIVE_MODEL = "qwen3:32b"  # Default model
 
 @app.get("/klaus/status")
 async def klaus_full_status():
@@ -5606,7 +5606,7 @@ async def emergency_terminal(request: EmergencyTerminalRequest):
         response = req.post(
             "http://localhost:11434/api/chat",
             json={
-                "model": "qwen2.5:7b",
+                "model": "qwen3:32b",
                 "messages": [
                     {"role": "system", "content": "You are Klaus, James's AI. This is EMERGENCY ACCESS - Claude Code may be down. Be helpful and direct."},
                     {"role": "user", "content": request.message}
@@ -5662,7 +5662,7 @@ async def sms_webhook(request: Request):
         response = req.post(
             "http://localhost:11434/api/chat",
             json={
-                "model": "qwen2.5:7b",
+                "model": "qwen3:32b",
                 "messages": [
                     {"role": "system", "content": "You are Klaus. Respond briefly (SMS has 160 char limit). This is emergency access."},
                     {"role": "user", "content": body}
@@ -5713,7 +5713,7 @@ async def github_webhook(request: Request):
         response = req.post(
             "http://localhost:11434/api/chat",
             json={
-                "model": "qwen2.5:7b",
+                "model": "qwen3:32b",
                 "messages": [
                     {"role": "system", "content": "You are Klaus. Responding to GitHub issue. Be helpful."},
                     {"role": "user", "content": query}
@@ -5750,7 +5750,7 @@ async def corbot_chat(request: Request):
     """
     body = await request.json()
     messages = body.get("messages", [])
-    model = body.get("model", "qwen2.5:32b-instruct-q4_K_M")
+    model = body.get("model", "qwen3:32b")
     working_dir = body.get("working_dir", str(Path.home() / "Desktop" / "klaus-projects"))
     max_iterations = body.get("max_iterations", 15)
     ide_mode = body.get("ide_mode", False)  # When true, use IDE-optimized system prompt

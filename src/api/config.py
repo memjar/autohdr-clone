@@ -22,7 +22,7 @@ IMI_NUM_CTX = 4096
 IMI_NUM_PREDICT = 1024
 
 # Fast model for lightweight tasks (classification, etc.)
-IMI_FAST_MODEL = os.environ.get("IMI_FAST_MODEL", "qwen2.5:7b")
+IMI_FAST_MODEL = os.environ.get("IMI_FAST_MODEL", "qwen3:32b")
 
 # Hydra Engine (vllm-mlx)
 HYDRA_BASE = os.environ.get("HYDRA_BASE", "http://localhost:8080/v1")

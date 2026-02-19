@@ -16,7 +16,7 @@ try:
     from config import OLLAMA_BASE, IMI_FAST_MODEL, IMI_MODEL, HYDRA_BASE
 except ImportError:
     OLLAMA_BASE = "http://localhost:11434"
-    IMI_FAST_MODEL = "qwen2.5:7b"
+    IMI_FAST_MODEL = "qwen3:32b"
     IMI_MODEL = "qwen3:32b"
     HYDRA_BASE = "http://localhost:8080/v1"
 
