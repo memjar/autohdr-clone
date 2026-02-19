@@ -30,7 +30,7 @@ from typing import List, Optional
 import cv2
 import numpy as np
 from fastapi import FastAPI, File, UploadFile, HTTPException, Form, Query, Request, WebSocket, WebSocketDisconnect
-from fastapi.responses import StreamingResponse, Response, JSONResponse, FileResponse
+from fastapi.responses import StreamingResponse, Response, JSONResponse, FileResponse, HTMLResponse
 import asyncio
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -6392,6 +6392,117 @@ async def ide_dev_proxy(port: int, path: str, request: Request):
             return JSONResponse({"error": f"No server running on port {port}"}, status_code=502)
         except Exception as e:
             return JSONResponse({"error": str(e)}, status_code=502)
+
+
+@app.get("/ide/preview/render")
+async def ide_preview_render(request: Request):
+    """
+    Render a project as self-contained HTML for live preview (like Replit/Bolt/Lovable).
+    Works for static HTML/CSS/JS and React/Vue projects (reads built output or source).
+    """
+    import mimetypes
+    path = request.query_params.get("path", "/Users/home/Desktop/klaus-projects/movesync")
+
+    if not os.path.isdir(path):
+        return HTMLResponse("<html><body style='background:#1a1a2e;color:#888;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'><div style='text-align:center'><h2>No project found</h2><p>Ask Klaus to create a project first</p></div></body></html>")
+
+    # Priority order for finding renderable HTML
+    candidates = [
+        os.path.join(path, "dist", "index.html"),      # built output
+        os.path.join(path, "build", "index.html"),      # CRA build
+        os.path.join(path, "public", "index.html"),     # public folder
+        os.path.join(path, "index.html"),               # root index
+    ]
+
+    html_path = None
+    for c in candidates:
+        if os.path.isfile(c):
+            html_path = c
+            break
+
+    if not html_path:
+        # No HTML found — check if it's a React/Vite project that needs building
+        pkg_json = os.path.join(path, "package.json")
+        if os.path.isfile(pkg_json):
+            return HTMLResponse(
+                "<html><body style='background:#1a1a2e;color:#ccc;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>"
+                "<div style='text-align:center'>"
+                "<div style='font-size:48px;margin-bottom:16px'>📦</div>"
+                "<h2 style='color:#fff;margin:0 0 8px'>Project needs a dev server</h2>"
+                "<p style='color:#888;margin:0'>Ask Klaus: <code style='background:#2a2a4a;padding:2px 8px;border-radius:4px'>start the dev server</code></p>"
+                "</div></body></html>"
+            )
+        # Generate a starter HTML for empty projects
+        return HTMLResponse(
+            "<html><body style='background:#1a1a2e;color:#ccc;font-family:system-ui;display:flex;align-items:center;justify-content:center;height:100vh;margin:0'>"
+            "<div style='text-align:center'>"
+            "<div style='font-size:48px;margin-bottom:16px'>🚀</div>"
+            "<h2 style='color:#fff;margin:0 0 8px'>Empty project</h2>"
+            "<p style='color:#888;margin:0'>Ask Klaus to build something here</p>"
+            "</div></body></html>"
+        )
+
+    # Read the HTML and inline local CSS/JS files
+    base_dir = os.path.dirname(html_path)
+    with open(html_path, "r", encoding="utf-8", errors="replace") as f:
+        html = f.read()
+
+    # Inline local CSS: <link rel="stylesheet" href="style.css"> → <style>...</style>
+    import re as _re
+    def inline_css(match):
+        href = match.group(1)
+        if href.startswith("http://") or href.startswith("https://"):
+            return match.group(0)
+        css_path = os.path.normpath(os.path.join(base_dir, href))
+        if os.path.isfile(css_path):
+            with open(css_path, "r", encoding="utf-8", errors="replace") as cf:
+                return f"<style>/* {href} */\n{cf.read()}</style>"
+        return match.group(0)
+
+    html = _re.sub(r'<link[^>]+rel=["\']stylesheet["\'][^>]+href=["\']([^"\']+)["\'][^>]*/?>',
+                    inline_css, html)
+    # Also catch href before rel
+    html = _re.sub(r'<link[^>]+href=["\']([^"\']+)["\'][^>]+rel=["\']stylesheet["\'][^>]*/?>',
+                    inline_css, html)
+
+    # Inline local JS: <script src="app.js"></script> → <script>...</script>
+    def inline_js(match):
+        src = match.group(1)
+        if src.startswith("http://") or src.startswith("https://"):
+            return match.group(0)
+        js_path = os.path.normpath(os.path.join(base_dir, src))
+        if os.path.isfile(js_path):
+            with open(js_path, "r", encoding="utf-8", errors="replace") as jf:
+                return f"<script>/* {src} */\n{jf.read()}</script>"
+        return match.group(0)
+
+    html = _re.sub(r'<script[^>]+src=["\']([^"\']+)["\'][^>]*></script>', inline_js, html)
+
+    return HTMLResponse(html)
+
+
+@app.get("/ide/preview/files-changed")
+async def ide_preview_files_changed(request: Request):
+    """Return a hash of project file mtimes for auto-refresh detection."""
+    import hashlib
+    path = request.query_params.get("path", "/Users/home/Desktop/klaus-projects/movesync")
+    if not os.path.isdir(path):
+        return {"hash": "none"}
+
+    mtimes = []
+    for root, dirs, files in os.walk(path):
+        # Skip node_modules, .git, dist
+        dirs[:] = [d for d in dirs if d not in ('.git', 'node_modules', 'dist', 'build', '__pycache__')]
+        for f in files:
+            if f.endswith(('.html', '.css', '.js', '.jsx', '.ts', '.tsx', '.json', '.py')):
+                fp = os.path.join(root, f)
+                try:
+                    mtimes.append(str(os.path.getmtime(fp)))
+                except:
+                    pass
+
+    h = hashlib.md5("".join(sorted(mtimes)).encode()).hexdigest()[:12]
+    return {"hash": h}
 
 
 @app.post("/ide/deploy")
